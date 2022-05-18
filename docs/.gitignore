@@ -1,3 +1,4 @@
 vendor
+!_includes/vendor
 _site
 .sass-cache
