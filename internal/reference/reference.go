@@ -312,7 +312,7 @@ func generatePageHeader(pageTitle string, navOrder int) string {
 layout: default
 title: %s
 parent: Types
-grand_parent: Reference
+grand_parent: pages.reference
 nav_order: %v
 ---
 

@@ -1,6 +1,6 @@
 ---
-layout: page
-title: Getting Started
+layout: i18n_page
+title: pages.getting_started
 nav_order: 3
 has_children: true
 has_toc: false
@@ -11,9 +11,9 @@ If you're new to FireFly, this is the perfect place to start! With the FireFly C
 
 <p style="position: relative;">
     <img src="../images/getting-started-overview.png"/>
-    <a style="position: absolute; top: 20%; left: 5%; width: 24%; bottom: 20%; text-decoration: none; color: transparent;" href="./firefly_cli.html"></a>
-    <a style="position: absolute; top: 20%; left: 37%; width: 24%; bottom: 20%; text-decoration: none; color: transparent;" href="./setup_env.html"></a>
-    <a style="position: absolute; top: 20%; left: 71%; width: 24%; bottom: 20%; text-decoration: none; color: transparent;" href="./sandbox.html"></a>
+    <a style="position: absolute; top: 20%; left: 5%; width: 24%; bottom: 20%; text-decoration: none; color: transparent; background: none;" href="./firefly_cli.html"></a>
+    <a style="position: absolute; top: 20%; left: 37%; width: 24%; bottom: 20%; text-decoration: none; color: transparent; background: none;" href="./setup_env.html"></a>
+    <a style="position: absolute; top: 20%; left: 71%; width: 24%; bottom: 20%; text-decoration: none; color: transparent; background: none;" href="./sandbox.html"></a>
 </p>
 
 

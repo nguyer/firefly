@@ -1,7 +1,7 @@
 ---
-layout: default
-title: Configuration Reference
-parent: Reference
+layout: i18n_page
+title: pages.configuration_reference
+parent: pages.reference
 nav_order: 3
 ---
 

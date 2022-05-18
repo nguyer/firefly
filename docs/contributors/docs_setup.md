@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Contributing to Documentation
-parent: Contributors
+parent: pages.contributors
 nav_order: 6
 ---
 

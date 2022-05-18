@@ -1,7 +1,7 @@
 ---
-layout: default
-title: Broadcast data
-parent: Tutorials
+layout: i18n_page
+title: pages.broadcast_data
+parent: pages.tutorials
 nav_order: 4
 ---
 

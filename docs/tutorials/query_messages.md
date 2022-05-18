@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Explore messages
-parent: Tutorials
+parent: pages.tutorials
 nav_order: 5
 ---
 

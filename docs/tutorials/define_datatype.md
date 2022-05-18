@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Define a datatype
-parent: Tutorials
+parent: pages.tutorials
 nav_order: 7
 ---
 

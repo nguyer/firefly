@@ -2,7 +2,7 @@
 layout: default
 title: Message
 parent: Types
-grand_parent: Reference
+grand_parent: pages.reference
 nav_order: 2
 ---
 

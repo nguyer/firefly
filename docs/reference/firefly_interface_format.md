@@ -1,7 +1,7 @@
 ---
 layout: default
 title: FireFly Interface Format
-parent: Reference
+parent: pages.reference
 nav_order: 3
 ---
 

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Privately send data
-parent: Tutorials
+parent: pages.tutorials
 nav_order: 4
 ---
 

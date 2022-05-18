@@ -1,7 +1,7 @@
 ---
 layout: default
 title: ③ Use the Sandbox
-parent: Getting Started
+parent: pages.getting_started
 nav_order: 3
 ---
 
