@@ -53,7 +53,7 @@ jobs:
       # Only need to build the full list of versions every time there is a new release
       - name: Update version.json list
         if: github.event_name == 'release'
-        run: ls ./gh-pages | grep -E '^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$' || true | sed 's/^/"/;s/$/"/' | tr '\n' ',' | sed 's/.$//' | sed 's/^/[/;s/$/]/' | jq --null-input '. += ["${GITHUB_REF##*/}"] | sort_by(.) | reverse | . += ["latest", "head"]' > ./docs/assets/js/versions.json
+        run: ls ./gh-pages | grep -E '^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$' || true | sed 's/^/"/;s/$/"/' | tr '\n' ',' | sed 's/.$//' | sed 's/^/[/;s/$/]/' | jq --null-input '. += ["${{ env.DOCS_VERSION }}"] | sort_by(.) | reverse | . += ["latest", "head"]' > ./docs/assets/js/versions.json
 
       - name: Install dependencies
         working-directory: docs
@@ -72,6 +72,15 @@ jobs:
         if: github.event_name != 'pull_request'
         working-directory: docs
         run: bundle exec htmlproofer --allow-hash-href --assume-extension ./_site --url-swap '^/firefly/${{ env.DOCS_VERSION }}/:/' --url-ignore /127.0.0.1/,/localhost/
+
+      - name: Deploy docs (latest)
+        if: github.event_name == 'push'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./docs/_site
+          destination_dir: ./${{ env.DOCS_VERSION }}
 
       ## FINAL STEPS TO COMPLETE IF THIS WAS A NEW RELEASE ##
 
