@@ -4,7 +4,9 @@ package blockchainmocks
 
 import (
 	blockchain "github.com/hyperledger/firefly/pkg/blockchain"
-	fftypes "github.com/hyperledger/firefly/pkg/fftypes"
+	core "github.com/hyperledger/firefly/pkg/core"
+
+	fftypes "github.com/hyperledger/firefly-common/pkg/fftypes"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -14,13 +16,13 @@ type Callbacks struct {
 	mock.Mock
 }
 
-// BatchPinComplete provides a mock function with given fields: batch, signingIdentity, protocolTxID, additionalInfo
-func (_m *Callbacks) BatchPinComplete(batch *blockchain.BatchPin, signingIdentity string, protocolTxID string, additionalInfo fftypes.JSONObject) error {
-	ret := _m.Called(batch, signingIdentity, protocolTxID, additionalInfo)
+// BatchPinComplete provides a mock function with given fields: batch, signingKey
+func (_m *Callbacks) BatchPinComplete(batch *blockchain.BatchPin, signingKey *core.VerifierRef) error {
+	ret := _m.Called(batch, signingKey)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(*blockchain.BatchPin, string, string, fftypes.JSONObject) error); ok {
-		r0 = rf(batch, signingIdentity, protocolTxID, additionalInfo)
+	if rf, ok := ret.Get(0).(func(*blockchain.BatchPin, *core.VerifierRef) error); ok {
+		r0 = rf(batch, signingKey)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -28,16 +30,21 @@ func (_m *Callbacks) BatchPinComplete(batch *blockchain.BatchPin, signingIdentit
 	return r0
 }
 
-// BlockchainOpUpdate provides a mock function with given fields: operationID, txState, errorMessage, opOutput
-func (_m *Callbacks) BlockchainOpUpdate(operationID *fftypes.UUID, txState fftypes.OpStatus, errorMessage string, opOutput fftypes.JSONObject) error {
-	ret := _m.Called(operationID, txState, errorMessage, opOutput)
+// BlockchainEvent provides a mock function with given fields: event
+func (_m *Callbacks) BlockchainEvent(event *blockchain.EventWithSubscription) error {
+	ret := _m.Called(event)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(*fftypes.UUID, fftypes.OpStatus, string, fftypes.JSONObject) error); ok {
-		r0 = rf(operationID, txState, errorMessage, opOutput)
+	if rf, ok := ret.Get(0).(func(*blockchain.EventWithSubscription) error); ok {
+		r0 = rf(event)
 	} else {
 		r0 = ret.Error(0)
 	}
 
 	return r0
+}
+
+// BlockchainOpUpdate provides a mock function with given fields: plugin, operationID, txState, blockchainTXID, errorMessage, opOutput
+func (_m *Callbacks) BlockchainOpUpdate(plugin blockchain.Plugin, operationID *fftypes.UUID, txState core.OpStatus, blockchainTXID string, errorMessage string, opOutput fftypes.JSONObject) {
+	_m.Called(plugin, operationID, txState, blockchainTXID, errorMessage, opOutput)
 }

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Node Component Architecture
-parent: Architecture
+parent: pages.architecture
 nav_order: 1
 ---
 
@@ -26,7 +26,7 @@ The core architecture of a FireFly node can be broken down into the following th
 - The core runtime responsibilities and pluggable elements.
 - The actual code running inside the node.
 
-![Node Component Architecture](../images/firefly_node.png "Periodic Table of Elements")
+![FireFly Architecture Overview](../images/firefly_architecture_overview.jpg "FireFly Architecture Overview")
 
 ## Runtimes
 
@@ -51,7 +51,7 @@ What are the core runtime responsibilities, and pluggable elements - right side 
         > - In some special cases (like the Database) the Golang shim does not need a connector runtime.
     - `Infrastructure Runtimes` are the core runtimes for multi-party system activities.
       - Blockchain nodes - Ethereum (Hyperledger Besu, Quorum, Geth), Hyperledger Fabric, Corda etc.
-      - Public strorage - IPFS etc.
+      - Shared strorage - IPFS etc.
       - Database - PostreSQL, CouchDB etc.
 
 ## Code Structure

@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -20,32 +20,28 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 )
 
 var postNewDatatype = &oapispec.Route{
-	Name:   "postNewDatatype",
-	Path:   "namespaces/{ns}/datatypes",
-	Method: http.MethodPost,
-	PathParams: []*oapispec.PathParam{
-		{Name: "ns", ExampleFromConf: config.NamespacesDefault, Description: i18n.MsgTBD},
-	},
+	Name:       "postNewDatatype",
+	Path:       "datatypes",
+	Method:     http.MethodPost,
+	PathParams: nil,
 	QueryParams: []*oapispec.QueryParam{
-		{Name: "confirm", Description: i18n.MsgConfirmQueryParam, IsBool: true, Example: "true"},
+		{Name: "confirm", Description: coremsgs.APIConfirmQueryParam, IsBool: true, Example: "true"},
 	},
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
-	JSONInputValue:  func() interface{} { return &fftypes.Datatype{} },
-	JSONInputMask:   []string{"ID", "Namespace", "Hash", "Created", "Message"},
-	JSONOutputValue: func() interface{} { return &fftypes.Datatype{} },
+	Description:     coremsgs.APIEndpointsPostNewDatatype,
+	JSONInputValue:  func() interface{} { return &core.Datatype{} },
+	JSONOutputValue: func() interface{} { return &core.Datatype{} },
 	JSONOutputCodes: []int{http.StatusAccepted, http.StatusOK},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
 		waitConfirm := strings.EqualFold(r.QP["confirm"], "true")
 		r.SuccessStatus = syncRetcode(waitConfirm)
-		_, err = r.Or.Broadcast().BroadcastDatatype(r.Ctx, r.PP["ns"], r.Input.(*fftypes.Datatype), waitConfirm)
+		_, err = getOr(r.Ctx).Broadcast().BroadcastDatatype(r.Ctx, extractNamespace(r.PP), r.Input.(*core.Datatype), waitConfirm)
 		return r.Input, err
 	},
 }

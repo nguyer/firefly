@@ -22,16 +22,16 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-func TestPutConfigRecord(t *testing.T) {
+func TestAdminPutConfigRecord(t *testing.T) {
 	o, r := newTestAdminServer()
 	input := &fftypes.ConfigRecord{
 		Key:   "foo",
-		Value: fftypes.Byteable(`{"foo": "bar"}`),
+		Value: fftypes.JSONAnyPtr(`{"foo": "bar"}`),
 	}
 	var buf bytes.Buffer
 	json.NewEncoder(&buf).Encode(&input)

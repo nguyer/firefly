@@ -17,132 +17,222 @@
 package events
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
 	"github.com/hyperledger/firefly/mocks/databasemocks"
 	"github.com/hyperledger/firefly/mocks/dataexchangemocks"
-	"github.com/hyperledger/firefly/mocks/syshandlersmocks"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/mocks/datamocks"
+	"github.com/hyperledger/firefly/mocks/identitymanagermocks"
+	"github.com/hyperledger/firefly/mocks/privatemessagingmocks"
+	"github.com/hyperledger/firefly/pkg/core"
+	"github.com/hyperledger/firefly/pkg/database"
+	"github.com/hyperledger/firefly/pkg/dataexchange"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-func TestMessageReceiveOK(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	defer cancel()
-
-	batch := &fftypes.Batch{
-		ID: fftypes.NewUUID(),
-		Identity: fftypes.Identity{
-			Author: "signingOrg",
-			Key:    "0x12345",
+func sampleBatchTransfer(t *testing.T, txType core.TransactionType) (*core.Batch, []byte) {
+	data := &core.Data{ID: fftypes.NewUUID(), Value: fftypes.JSONAnyPtr(`"test"`)}
+	batch := sampleBatch(t, core.BatchTypePrivate, txType, core.DataArray{data})
+	b, _ := json.Marshal(&core.TransportWrapper{
+		Batch: batch,
+		Group: &core.Group{
+			Hash: fftypes.NewRandB32(),
 		},
-		Payload: fftypes.BatchPayload{
-			TX: fftypes.TransactionRef{
-				ID: fftypes.NewUUID(),
+	})
+	return batch, b
+}
+
+func newTestOrg(name string) *core.Identity {
+	identity := &core.Identity{
+		IdentityBase: core.IdentityBase{
+			ID:        fftypes.NewUUID(),
+			Type:      core.IdentityTypeOrg,
+			Namespace: core.SystemNamespace,
+			Name:      name,
+			Parent:    nil,
+		},
+	}
+	identity.DID, _ = identity.GenerateDID(context.Background())
+	return identity
+}
+
+func newTestNode(name string, owner *core.Identity) *core.Identity {
+	identity := &core.Identity{
+		IdentityBase: core.IdentityBase{
+			ID:        fftypes.NewUUID(),
+			Type:      core.IdentityTypeNode,
+			Namespace: core.SystemNamespace,
+			Name:      name,
+			Parent:    owner.ID,
+		},
+		IdentityProfile: core.IdentityProfile{
+			Profile: fftypes.JSONObject{
+				"id":  fmt.Sprintf("%s-peer", name),
+				"url": fmt.Sprintf("https://%s.example.com", name),
 			},
 		},
 	}
-	batch.Hash = batch.Payload.Hash()
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:  fftypes.TransportPayloadTypeBatch,
-		Batch: batch,
-	})
+	identity.DID, _ = identity.GenerateDID(context.Background())
+	return identity
+}
 
+func newMessageReceivedNoAck(peerID string, data []byte) *dataexchangemocks.DXEvent {
+	mde := &dataexchangemocks.DXEvent{}
+	mde.On("MessageReceived").Return(&dataexchange.MessageReceived{
+		PeerID: peerID,
+		Data:   data,
+	})
+	mde.On("Type").Return(dataexchange.DXEventTypeMessageReceived).Maybe()
+	return mde
+}
+
+func newMessageReceived(peerID string, data []byte, expectedManifest string) *dataexchangemocks.DXEvent {
+	mde := newMessageReceivedNoAck(peerID, data)
+	mde.On("AckWithManifest", expectedManifest).Return()
+	return mde
+}
+
+func newPrivateBlobReceivedNoAck(peerID string, hash *fftypes.Bytes32, size int64, payloadRef string) *dataexchangemocks.DXEvent {
+	mde := &dataexchangemocks.DXEvent{}
+	mde.On("PrivateBlobReceived").Return(&dataexchange.PrivateBlobReceived{
+		PeerID:     peerID,
+		Hash:       *hash,
+		Size:       size,
+		PayloadRef: payloadRef,
+	})
+	mde.On("Type").Return(dataexchange.DXEventTypePrivateBlobReceived).Maybe()
+	return mde
+}
+
+func newPrivateBlobReceived(peerID string, hash *fftypes.Bytes32, size int64, payloadRef string) *dataexchangemocks.DXEvent {
+	mde := newPrivateBlobReceivedNoAck(peerID, hash, size, payloadRef)
+	mde.On("Ack").Return()
+	return mde
+}
+
+func TestUnknownEvent(t *testing.T) {
+	em, cancel := newTestEventManager(t)
+	defer cancel()
+
+	done := make(chan struct{})
+	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx").Maybe()
+	mde := &dataexchangemocks.DXEvent{}
+	mde.On("Type").Return(dataexchange.DXEventType(99)).Maybe()
+	mde.On("Ack").Run(func(args mock.Arguments) {
+		close(done)
+	})
+	em.DXEvent(mdx, mde)
+	<-done
+
+	mde.AssertExpectations(t)
+	mdx.AssertExpectations(t)
+}
+
+func TestPinnedReceiveOK(t *testing.T) {
+	em, cancel := newTestEventManager(t)
+	defer cancel()
+
+	batch, b := sampleBatchTransfer(t, core.TransactionTypeBatchPin)
+
+	org1 := newTestOrg("org1")
+	node1 := newTestNode("node1", org1)
 	mdi := em.database.(*databasemocks.Plugin)
 	mdx := &dataexchangemocks.Plugin{}
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return([]*fftypes.Node{
-		{Name: "node1", Owner: "parentOrg"},
-	}, nil, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "0x12345").Return(&fftypes.Organization{
-		Identity: "0x12345", Parent: "parentOrg",
-	}, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "parentOrg").Return(&fftypes.Organization{
-		Identity: "parentOrg",
-	}, nil)
-	mdi.On("UpsertBatch", em.ctx, mock.Anything, false).Return(nil, nil)
-	err := em.MessageReceived(mdx, "peer1", b)
-	assert.NoError(t, err)
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(org1, false, nil)
+	mdi.On("UpsertBatch", em.ctx, mock.Anything).Return(nil, nil)
+	mdi.On("InsertDataArray", em.ctx, mock.Anything).Return(nil, nil)
+	mdi.On("InsertMessages", em.ctx, mock.Anything, mock.AnythingOfType("database.PostCompletionHook")).Return(nil, nil).Run(func(args mock.Arguments) {
+		args[2].(database.PostCompletionHook)()
+	})
+	mdx.On("Name").Return("utdx").Maybe()
+	mdm := em.data.(*datamocks.Manager)
+	mdm.On("UpdateMessageCache", mock.Anything, mock.Anything).Return()
 
+	done := make(chan struct{})
+	mde := newMessageReceivedNoAck("peer1", b)
+	mde.On("AckWithManifest", batch.Payload.Manifest(batch.ID).String()).Run(func(args mock.Arguments) {
+		close(done)
+	})
+	em.DXEvent(mdx, mde)
+	<-done
+
+	mde.AssertExpectations(t)
 	mdi.AssertExpectations(t)
 	mdx.AssertExpectations(t)
+	mdm.AssertExpectations(t)
 }
 
 func TestMessageReceiveOkBadBatchIgnored(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	defer cancel()
 
-	batch := &fftypes.Batch{
-		ID: nil, // so that we only test up to persistBatch which will return a non-retry error
-		Identity: fftypes.Identity{
-			Author: "signingOrg",
-			Key:    "0x12345",
-		},
-	}
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:  fftypes.TransportPayloadTypeBatch,
+	data := &core.Data{ID: fftypes.NewUUID(), Value: fftypes.JSONAnyPtr(`"test"`)}
+	batch := sampleBatch(t, core.BatchTypePrivate, core.TransactionTypeBatchPin, core.DataArray{data})
+	batch.Payload.TX.Type = core.TransactionTypeTokenPool
+	b, _ := json.Marshal(&core.TransportWrapper{
 		Batch: batch,
+		Group: &core.Group{
+			Hash: fftypes.NewRandB32(),
+		},
 	})
 
-	mdi := em.database.(*databasemocks.Plugin)
+	org1 := newTestOrg("org1")
+	node1 := newTestNode("node1", org1)
 	mdx := &dataexchangemocks.Plugin{}
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return([]*fftypes.Node{
-		{Name: "node1", Owner: "parentOrg"},
-	}, nil, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "0x12345").Return(&fftypes.Organization{
-		Identity: "0x12345", Parent: "parentOrg",
-	}, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "parentOrg").Return(&fftypes.Organization{
-		Identity: "parentOrg",
-	}, nil)
-	err := em.MessageReceived(mdx, "peer1", b)
-	assert.NoError(t, err)
+	mdx.On("Name").Return("utdx")
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(org1, false, nil)
 
-	mdi.AssertExpectations(t)
+	mde := newMessageReceived("peer1", b, "")
+	em.messageReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
 	mdx.AssertExpectations(t)
+	mim.AssertExpectations(t)
 }
 
 func TestMessageReceivePersistBatchError(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	cancel() // retryable error
 
-	batch := &fftypes.Batch{
-		ID: fftypes.NewUUID(),
-		Identity: fftypes.Identity{
-			Author: "signingOrg",
-			Key:    "0x12345",
-		},
-		Payload: fftypes.BatchPayload{
-			TX: fftypes.TransactionRef{
-				ID: fftypes.NewUUID(),
-			},
-		},
-	}
-	batch.Hash = batch.Payload.Hash()
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:  fftypes.TransportPayloadTypeBatch,
-		Batch: batch,
-	})
+	_, b := sampleBatchTransfer(t, core.TransactionTypeBatchPin)
 
+	org1 := newTestOrg("org1")
+	node1 := newTestNode("node1", org1)
 	mdi := em.database.(*databasemocks.Plugin)
 	mdx := &dataexchangemocks.Plugin{}
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return([]*fftypes.Node{
-		{Name: "node1", Owner: "parentOrg"},
-	}, nil, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "0x12345").Return(&fftypes.Organization{
-		Identity: "0x12345", Parent: "parentOrg",
-	}, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "parentOrg").Return(&fftypes.Organization{
-		Identity: "parentOrg",
-	}, nil)
-	mdi.On("UpsertBatch", em.ctx, mock.Anything, false).Return(fmt.Errorf("pop"))
-	err := em.MessageReceived(mdx, "peer1", b)
-	assert.Regexp(t, "FF10158", err)
+	mdx.On("Name").Return("utdx")
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(org1, false, nil)
+	mdi.On("UpsertBatch", em.ctx, mock.Anything).Return(fmt.Errorf("pop"))
 
+	// no ack as we are simulating termination mid retry
+	mde := newMessageReceivedNoAck("peer1", b)
+	em.messageReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
 	mdi.AssertExpectations(t)
 	mdx.AssertExpectations(t)
+	mim.AssertExpectations(t)
 }
 
 func TestMessageReceivedBadData(t *testing.T) {
@@ -150,8 +240,12 @@ func TestMessageReceivedBadData(t *testing.T) {
 	defer cancel()
 
 	mdx := &dataexchangemocks.Plugin{}
-	err := em.MessageReceived(mdx, "peer1", []byte(`!{}`))
-	assert.NoError(t, err)
+	mdx.On("Name").Return("utdx")
+
+	mde := newMessageReceived("peer1", []byte(`!{}`), "")
+	em.messageReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
 
 }
 
@@ -160,11 +254,14 @@ func TestMessageReceivedUnknownType(t *testing.T) {
 	defer cancel()
 
 	mdx := &dataexchangemocks.Plugin{}
-	err := em.MessageReceived(mdx, "peer1", []byte(`{
-		"type": "unknown"
-	}`))
-	assert.NoError(t, err)
+	mdx.On("Name").Return("utdx")
 
+	mde := newMessageReceived("peer1", []byte(`{
+		"type": "unknown"
+	}`), "")
+	em.messageReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
 }
 
 func TestMessageReceivedNilBatch(t *testing.T) {
@@ -172,11 +269,14 @@ func TestMessageReceivedNilBatch(t *testing.T) {
 	defer cancel()
 
 	mdx := &dataexchangemocks.Plugin{}
-	err := em.MessageReceived(mdx, "peer1", []byte(`{
-		"type": "batch"
-	}`))
-	assert.NoError(t, err)
+	mdx.On("Name").Return("utdx")
 
+	mde := newMessageReceived("peer1", []byte(`{
+		"type": "batch"
+	}`), "")
+	em.messageReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
 }
 
 func TestMessageReceivedNilMessage(t *testing.T) {
@@ -184,11 +284,14 @@ func TestMessageReceivedNilMessage(t *testing.T) {
 	defer cancel()
 
 	mdx := &dataexchangemocks.Plugin{}
-	err := em.MessageReceived(mdx, "peer1", []byte(`{
-		"type": "message"
-	}`))
-	assert.NoError(t, err)
+	mdx.On("Name").Return("utdx")
 
+	mde := newMessageReceived("peer1", []byte(`{
+		"type": "message"
+	}`), "")
+	em.messageReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
 }
 
 func TestMessageReceivedNilGroup(t *testing.T) {
@@ -196,115 +299,65 @@ func TestMessageReceivedNilGroup(t *testing.T) {
 	defer cancel()
 
 	mdx := &dataexchangemocks.Plugin{}
-	err := em.MessageReceived(mdx, "peer1", []byte(`{
+	mdx.On("Name").Return("utdx")
+
+	mde := newMessageReceived("peer1", []byte(`{
 		"type": "message",
 		"message": {}
-	}`))
-	assert.NoError(t, err)
+	}`), "")
+	em.messageReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
 }
 
 func TestMessageReceiveNodeLookupError(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	cancel() // to stop retry
 
-	batch := &fftypes.Batch{}
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:  fftypes.TransportPayloadTypeBatch,
+	batch := &core.Batch{}
+	b, _ := json.Marshal(&core.TransportWrapper{
 		Batch: batch,
 	})
 
-	mdi := em.database.(*databasemocks.Plugin)
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(nil, fmt.Errorf("pop"))
+
 	mdx := &dataexchangemocks.Plugin{}
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return(nil, nil, fmt.Errorf("pop"))
-	err := em.MessageReceived(mdx, "peer1", b)
-	assert.Regexp(t, "FF10158", err)
-}
+	mdx.On("Name").Return("utdx")
 
-func TestMessageReceiveNodeNotFound(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	defer cancel()
+	// no ack as we are simulating termination mid retry
+	mde := newMessageReceivedNoAck("peer1", b)
+	em.messageReceived(mdx, mde)
 
-	batch := &fftypes.Batch{}
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:  fftypes.TransportPayloadTypeBatch,
-		Batch: batch,
-	})
-
-	mdi := em.database.(*databasemocks.Plugin)
-	mdx := &dataexchangemocks.Plugin{}
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return(nil, nil, nil)
-	err := em.MessageReceived(mdx, "peer1", b)
-	assert.NoError(t, err)
-}
-
-func TestMessageReceiveAuthorLookupError(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	cancel() // to stop retry
-
-	batch := &fftypes.Batch{}
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:  fftypes.TransportPayloadTypeBatch,
-		Batch: batch,
-	})
-
-	mdi := em.database.(*databasemocks.Plugin)
-	mdx := &dataexchangemocks.Plugin{}
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return([]*fftypes.Node{
-		{Name: "node1", Owner: "org1"},
-	}, nil, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, mock.Anything).Return(nil, fmt.Errorf("pop"))
-	err := em.MessageReceived(mdx, "peer1", b)
-	assert.Regexp(t, "FF10158", err)
-}
-
-func TestMessageReceiveAuthorNotFound(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	defer cancel()
-
-	batch := &fftypes.Batch{}
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:  fftypes.TransportPayloadTypeBatch,
-		Batch: batch,
-	})
-
-	mdi := em.database.(*databasemocks.Plugin)
-	mdx := &dataexchangemocks.Plugin{}
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return([]*fftypes.Node{
-		{Name: "node1", Owner: "org1"},
-	}, nil, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, mock.Anything).Return(nil, nil)
-	err := em.MessageReceived(mdx, "peer1", b)
-	assert.NoError(t, err)
+	mde.AssertExpectations(t)
 }
 
 func TestMessageReceiveGetCandidateOrgFail(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	cancel() // retryable error so we need to break the loop
 
-	batch := &fftypes.Batch{
-		ID: nil, // so that we only test up to persistBatch which will return a non-retry error
-		Identity: fftypes.Identity{
-			Author: "signingOrg",
-			Key:    "0x12345",
-		},
-	}
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:  fftypes.TransportPayloadTypeBatch,
-		Batch: batch,
-	})
+	_, b := sampleBatchTransfer(t, core.TransactionTypeBatchPin)
 
+	org1 := newTestOrg("org1")
+	node1 := newTestNode("node1", org1)
 	mdi := em.database.(*databasemocks.Plugin)
 	mdx := &dataexchangemocks.Plugin{}
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return([]*fftypes.Node{
-		{Name: "node1", Owner: "parentOrg"},
-	}, nil, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "0x12345").Return(&fftypes.Organization{
-		Identity: "0x12345", Parent: "parentOrg",
-	}, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "parentOrg").Return(nil, fmt.Errorf("pop"))
-	err := em.MessageReceived(mdx, "peer1", b)
-	assert.Regexp(t, "FF10158", err)
+	mdx.On("Name").Return("utdx")
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(nil, true, fmt.Errorf("pop"))
 
+	// no ack as we are simulating termination mid retry
+	mde := newMessageReceivedNoAck("peer1", b)
+	em.messageReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
 	mdi.AssertExpectations(t)
 	mdx.AssertExpectations(t)
 }
@@ -313,30 +366,23 @@ func TestMessageReceiveGetCandidateOrgNotFound(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	defer cancel()
 
-	batch := &fftypes.Batch{
-		ID: nil, // so that we only test up to persistBatch which will return a non-retry error
-		Identity: fftypes.Identity{
-			Author: "signingOrg",
-			Key:    "0x12345",
-		},
-	}
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:  fftypes.TransportPayloadTypeBatch,
-		Batch: batch,
-	})
+	_, b := sampleBatchTransfer(t, core.TransactionTypeBatchPin)
 
+	org1 := newTestOrg("org1")
+	node1 := newTestNode("node1", org1)
 	mdi := em.database.(*databasemocks.Plugin)
 	mdx := &dataexchangemocks.Plugin{}
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return([]*fftypes.Node{
-		{Name: "node1", Owner: "parentOrg"},
-	}, nil, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "0x12345").Return(&fftypes.Organization{
-		Identity: "0x12345", Parent: "parentOrg",
-	}, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "parentOrg").Return(nil, nil)
-	err := em.MessageReceived(mdx, "peer1", b)
-	assert.NoError(t, err)
+	mdx.On("Name").Return("utdx")
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(nil, false, nil)
+	mde := newMessageReceived("peer1", b, "")
+	em.messageReceived(mdx, mde)
 
+	mde.AssertExpectations(t)
 	mdi.AssertExpectations(t)
 	mdx.AssertExpectations(t)
 }
@@ -345,533 +391,426 @@ func TestMessageReceiveGetCandidateOrgNotMatch(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	defer cancel()
 
-	batch := &fftypes.Batch{
-		ID: nil, // so that we only test up to persistBatch which will return a non-retry error
-		Identity: fftypes.Identity{
-			Author: "signingOrg",
-			Key:    "0x12345",
-		},
-	}
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:  fftypes.TransportPayloadTypeBatch,
-		Batch: batch,
-	})
+	_, b := sampleBatchTransfer(t, core.TransactionTypeBatchPin)
 
 	mdi := em.database.(*databasemocks.Plugin)
 	mdx := &dataexchangemocks.Plugin{}
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return([]*fftypes.Node{
-		{Name: "node1", Owner: "another"},
-	}, nil, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "0x12345").Return(&fftypes.Organization{
-		Identity: "0x12345", Parent: "parentOrg",
-	}, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "parentOrg").Return(&fftypes.Organization{
-		Identity: "parentOrg",
-	}, nil)
-	err := em.MessageReceived(mdx, "peer1", b)
-	assert.NoError(t, err)
+	mdx.On("Name").Return("utdx")
+	org1 := newTestOrg("org1")
+	node1 := newTestNode("node1", org1)
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(newTestOrg("org2"), false, nil)
+	mde := newMessageReceived("peer1", b, "")
+	em.messageReceived(mdx, mde)
 
+	mde.AssertExpectations(t)
 	mdi.AssertExpectations(t)
 	mdx.AssertExpectations(t)
 }
 
-func TestBLOBReceivedTriggersRewindOk(t *testing.T) {
+func TestPrivateBlobReceivedTriggersRewindOk(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	defer cancel()
 	hash := fftypes.NewRandB32()
-	dataID := fftypes.NewUUID()
-	batchID := fftypes.NewUUID()
-
-	mdx := &dataexchangemocks.Plugin{}
-
-	mdi := em.database.(*databasemocks.Plugin)
-	mdi.On("InsertBlob", em.ctx, mock.Anything).Return(nil)
-	mdi.On("GetDataRefs", em.ctx, mock.Anything).Return(fftypes.DataRefs{
-		{ID: dataID},
-	}, nil, nil)
-	mdi.On("GetMessagesForData", em.ctx, dataID, mock.Anything).Return([]*fftypes.Message{
-		{BatchID: batchID},
-	}, nil, nil)
-
-	err := em.BLOBReceived(mdx, "peer1", *hash, "ns1/path1")
-	assert.NoError(t, err)
-
-	bid := <-em.aggregator.offchainBatches
-	assert.Equal(t, *batchID, *bid)
-
-	mdi.AssertExpectations(t)
-}
-
-func TestBLOBReceivedBadEvent(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	defer cancel()
-
-	err := em.BLOBReceived(nil, "", fftypes.Bytes32{}, "")
-	assert.NoError(t, err)
-}
-
-func TestBLOBReceivedGetMessagesFail(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	cancel() // retryable error
-	hash := fftypes.NewRandB32()
-	dataID := fftypes.NewUUID()
-
-	mdx := &dataexchangemocks.Plugin{}
-
-	mdi := em.database.(*databasemocks.Plugin)
-	mdi.On("InsertBlob", em.ctx, mock.Anything).Return(nil)
-	mdi.On("GetDataRefs", em.ctx, mock.Anything).Return(fftypes.DataRefs{
-		{ID: dataID},
-	}, nil, nil)
-	mdi.On("GetMessagesForData", em.ctx, dataID, mock.Anything).Return(nil, nil, fmt.Errorf("pop"))
-
-	err := em.BLOBReceived(mdx, "peer1", *hash, "ns1/path1")
-	assert.Regexp(t, "FF10158", err)
-
-	mdi.AssertExpectations(t)
-}
-
-func TestBLOBReceivedGetDataRefsFail(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	cancel() // retryable error
-	hash := fftypes.NewRandB32()
-
-	mdx := &dataexchangemocks.Plugin{}
-
-	mdi := em.database.(*databasemocks.Plugin)
-	mdi.On("InsertBlob", em.ctx, mock.Anything).Return(nil)
-	mdi.On("GetDataRefs", em.ctx, mock.Anything).Return(nil, nil, fmt.Errorf("pop"))
-
-	err := em.BLOBReceived(mdx, "peer1", *hash, "ns1/path1")
-	assert.Regexp(t, "FF10158", err)
-
-	mdi.AssertExpectations(t)
-}
-
-func TestBLOBReceivedInsertBlobFails(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	cancel() // retryable error
-	hash := fftypes.NewRandB32()
-
-	mdx := &dataexchangemocks.Plugin{}
-
-	mdi := em.database.(*databasemocks.Plugin)
-	mdi.On("InsertBlob", em.ctx, mock.Anything).Return(fmt.Errorf("pop"))
-
-	err := em.BLOBReceived(mdx, "peer1", *hash, "ns1/path1")
-	assert.Regexp(t, "FF10158", err)
-
-	mdi.AssertExpectations(t)
-}
-
-func TestTransferResultOk(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	defer cancel()
-
-	mdi := em.database.(*databasemocks.Plugin)
-	id := fftypes.NewUUID()
-	mdi.On("GetOperations", mock.Anything, mock.Anything).Return([]*fftypes.Operation{
-		{
-			ID:        id,
-			BackendID: "tracking12345",
-		},
-	}, nil, nil)
-	mdi.On("UpdateOperation", mock.Anything, id, mock.Anything).Return(nil)
 
 	mdx := &dataexchangemocks.Plugin{}
 	mdx.On("Name").Return("utdx")
-	err := em.TransferResult(mdx, "tracking12345", fftypes.OpStatusFailed, "error info", fftypes.JSONObject{"extra": "info"})
-	assert.NoError(t, err)
-
-}
-
-func TestTransferResultNotCorrelated(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	defer cancel()
 
 	mdi := em.database.(*databasemocks.Plugin)
-	id := fftypes.NewUUID()
-	mdi.On("GetOperations", mock.Anything, mock.Anything).Return([]*fftypes.Operation{}, nil, nil)
-	mdi.On("UpdateOperation", mock.Anything, id, mock.Anything).Return(nil)
+	mdi.On("GetBlobs", em.ctx, mock.Anything).Return([]*core.Blob{}, nil, nil)
+	mdi.On("InsertBlobs", em.ctx, mock.Anything).Return(nil)
 
-	mdx := &dataexchangemocks.Plugin{}
-	mdx.On("Name").Return("utdx")
-	err := em.TransferResult(mdx, "tracking12345", fftypes.OpStatusFailed, "error info", fftypes.JSONObject{"extra": "info"})
-	assert.NoError(t, err)
-
-}
-
-func TestTransferResultNotFound(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	cancel() // avoid retries
-
-	mdi := em.database.(*databasemocks.Plugin)
-	mdi.On("GetOperations", mock.Anything, mock.Anything).Return([]*fftypes.Operation{}, nil, nil)
-
-	mdx := &dataexchangemocks.Plugin{}
-	mdx.On("Name").Return("utdx")
-	err := em.TransferResult(mdx, "tracking12345", fftypes.OpStatusFailed, "error info", fftypes.JSONObject{"extra": "info"})
-	assert.Regexp(t, "FF10158", err)
-
-}
-
-func TestTransferGetOpFail(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	cancel() // retryable error
-
-	mdi := em.database.(*databasemocks.Plugin)
-	mdi.On("GetOperations", mock.Anything, mock.Anything).Return(nil, nil, fmt.Errorf("pop"))
-
-	mdx := &dataexchangemocks.Plugin{}
-	mdx.On("Name").Return("utdx")
-	err := em.TransferResult(mdx, "tracking12345", fftypes.OpStatusFailed, "error info", fftypes.JSONObject{"extra": "info"})
-	assert.Regexp(t, "FF10158", err)
-
-}
-
-func TestTransferUpdateFail(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	cancel() // retryable error
-
-	mdi := em.database.(*databasemocks.Plugin)
-	id := fftypes.NewUUID()
-	mdi.On("GetOperations", mock.Anything, mock.Anything).Return([]*fftypes.Operation{
-		{
-			ID:        id,
-			BackendID: "tracking12345",
-		},
-	}, nil, nil)
-	mdi.On("UpdateOperation", mock.Anything, id, mock.Anything).Return(fmt.Errorf("pop"))
-
-	mdx := &dataexchangemocks.Plugin{}
-	mdx.On("Name").Return("utdx")
-	err := em.TransferResult(mdx, "tracking12345", fftypes.OpStatusFailed, "error info", fftypes.JSONObject{"extra": "info"})
-	assert.Regexp(t, "FF10158", err)
-
-}
-
-func TestMessageReceiveMessageWrongType(t *testing.T) {
-	em, cancel := newTestEventManager(t)
-	defer cancel()
-
-	msg := &fftypes.Message{
-		Header: fftypes.MessageHeader{
-			ID:     fftypes.NewUUID(),
-			TxType: fftypes.TransactionTypeBatchPin,
-		},
-	}
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:    fftypes.TransportPayloadTypeMessage,
-		Message: msg,
-		Group:   &fftypes.Group{},
+	done := make(chan struct{})
+	mde := newPrivateBlobReceivedNoAck("peer1", hash, 12345, "ns1/path1")
+	mde.On("Ack").Run(func(args mock.Arguments) {
+		close(done)
 	})
+	em.DXEvent(mdx, mde)
+	<-done
+
+	brw := <-em.aggregator.rewinder.rewindRequests
+	assert.Equal(t, rewind{hash: *hash, rewindType: rewindBlob}, brw)
+
+	mde.AssertExpectations(t)
+	mdi.AssertExpectations(t)
+}
+
+func TestPrivateBlobReceivedBadEvent(t *testing.T) {
+	em, cancel := newTestEventManager(t)
+	defer cancel()
 
 	mdx := &dataexchangemocks.Plugin{}
-	err := em.MessageReceived(mdx, "peer1", b)
-	assert.NoError(t, err)
+	mdx.On("Name").Return("utdx")
 
-	mdx.AssertExpectations(t)
+	mde := newPrivateBlobReceived("", fftypes.NewRandB32(), 12345, "")
+	em.privateBlobReceived(mdx, mde)
+	mde.AssertExpectations(t)
+}
+
+func TestPrivateBlobReceivedInsertBlobFails(t *testing.T) {
+	em, cancel := newTestEventManager(t)
+	cancel() // retryable error
+	hash := fftypes.NewRandB32()
+
+	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx")
+
+	mdi := em.database.(*databasemocks.Plugin)
+	mdi.On("GetBlobs", em.ctx, mock.Anything).Return([]*core.Blob{}, nil, nil)
+	mdi.On("InsertBlobs", em.ctx, mock.Anything).Return(fmt.Errorf("pop"))
+
+	// no ack as we are simulating termination mid retry
+	mde := newPrivateBlobReceivedNoAck("peer1", hash, 12345, "ns1/path1")
+	em.privateBlobReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
+	mdi.AssertExpectations(t)
+}
+
+func TestPrivateBlobReceivedGetBlobsFails(t *testing.T) {
+	em, cancel := newTestEventManager(t)
+	cancel() // retryable error
+	hash := fftypes.NewRandB32()
+
+	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx")
+
+	mdi := em.database.(*databasemocks.Plugin)
+	mdi.On("GetBlobs", em.ctx, mock.Anything).Return(nil, nil, fmt.Errorf("pop"))
+
+	// no ack as we are simulating termination mid retry
+	mde := newPrivateBlobReceivedNoAck("peer1", hash, 12345, "ns1/path1")
+	em.privateBlobReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
+	mdi.AssertExpectations(t)
 }
 
 func TestMessageReceiveMessageIdentityFail(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	cancel() // to avoid infinite retry
 
-	msg := &fftypes.Message{
-		Header: fftypes.MessageHeader{
-			Identity: fftypes.Identity{
-				Author: "signingOrg",
-				Key:    "0x12345",
-			},
-			ID:     fftypes.NewUUID(),
-			TxType: fftypes.TransactionTypeNone,
-		},
-	}
-	err := msg.Seal(em.ctx)
-	assert.NoError(t, err)
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:    fftypes.TransportPayloadTypeMessage,
-		Message: msg,
-		Group:   &fftypes.Group{},
-	})
+	org1 := newTestOrg("org1")
+	org2 := newTestOrg("org2")
+	org2.Parent = org1.ID
+	node1 := newTestNode("node1", org1)
+	_, b := sampleBatchTransfer(t, core.TransactionTypeBatchPin)
 
-	mdi := em.database.(*databasemocks.Plugin)
 	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx")
 
-	msh := em.syshandlers.(*syshandlersmocks.SystemHandlers)
-	msh.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(true, nil)
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(org2, false, nil)
+	mim.On("CachedIdentityLookupByID", em.ctx, org2.Parent).Return(nil, fmt.Errorf("pop"))
 
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return(nil, nil, fmt.Errorf("pop"))
+	// no ack as we are simulating termination mid retry
+	mde := newMessageReceivedNoAck("peer1", b)
+	em.messageReceived(mdx, mde)
 
-	err = em.MessageReceived(mdx, "peer1", b)
-	assert.Regexp(t, "FF10158", err)
-
-	mdi.AssertExpectations(t)
+	mde.AssertExpectations(t)
 	mdx.AssertExpectations(t)
+	mim.AssertExpectations(t)
+}
+
+func TestMessageReceiveMessageIdentityParentNotFound(t *testing.T) {
+	em, cancel := newTestEventManager(t)
+	cancel() // to avoid infinite retry
+
+	org1 := newTestOrg("org1")
+	org2 := newTestOrg("org2")
+	org2.Parent = org1.ID
+	node1 := newTestNode("node1", org1)
+	_, b := sampleBatchTransfer(t, core.TransactionTypeBatchPin)
+
+	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx")
+
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(org2, false, nil)
+	mim.On("CachedIdentityLookupByID", em.ctx, org2.Parent).Return(nil, nil)
+
+	mde := newMessageReceived("peer1", b, "")
+	em.messageReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
+	mdx.AssertExpectations(t)
+	mim.AssertExpectations(t)
 }
 
 func TestMessageReceiveMessageIdentityIncorrect(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	cancel() // to avoid infinite retry
 
-	msg := &fftypes.Message{
-		Header: fftypes.MessageHeader{
-			Identity: fftypes.Identity{
-				Author: "signingOrg",
-				Key:    "0x12345",
-			},
-			ID:     fftypes.NewUUID(),
-			TxType: fftypes.TransactionTypeNone,
-		},
-	}
-	err := msg.Seal(em.ctx)
-	assert.NoError(t, err)
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:    fftypes.TransportPayloadTypeMessage,
-		Message: msg,
-		Group:   &fftypes.Group{},
-	})
+	org1 := newTestOrg("org1")
+	org2 := newTestOrg("org2")
+	org3 := newTestOrg("org3")
+	org2.Parent = org1.ID
+	node1 := newTestNode("node1", org1)
+	_, b := sampleBatchTransfer(t, core.TransactionTypeBatchPin)
 
-	mdi := em.database.(*databasemocks.Plugin)
 	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx")
 
-	msh := em.syshandlers.(*syshandlersmocks.SystemHandlers)
-	msh.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(true, nil)
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(org2, false, nil)
+	mim.On("CachedIdentityLookupByID", em.ctx, org2.Parent).Return(org3, nil)
 
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return([]*fftypes.Node{}, nil, nil)
+	mde := newMessageReceived("peer1", b, "")
+	em.messageReceived(mdx, mde)
 
-	err = em.MessageReceived(mdx, "peer1", b)
-	assert.NoError(t, err)
-
-	mdi.AssertExpectations(t)
+	mde.AssertExpectations(t)
 	mdx.AssertExpectations(t)
+	mim.AssertExpectations(t)
 }
 
 func TestMessageReceiveMessagePersistMessageFail(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	cancel() // to avoid infinite retry
 
-	msg := &fftypes.Message{
-		Header: fftypes.MessageHeader{
-			Identity: fftypes.Identity{
-				Author: "signingOrg",
-				Key:    "0x12345",
-			},
-			ID:     fftypes.NewUUID(),
-			TxType: fftypes.TransactionTypeNone,
-		},
-	}
-	err := msg.Seal(em.ctx)
-	assert.NoError(t, err)
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:    fftypes.TransportPayloadTypeMessage,
-		Message: msg,
-		Group:   &fftypes.Group{},
-	})
+	_, b := sampleBatchTransfer(t, core.TransactionTypeUnpinned)
 
 	mdi := em.database.(*databasemocks.Plugin)
 	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx")
 
-	msh := em.syshandlers.(*syshandlersmocks.SystemHandlers)
-	msh.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(true, nil)
+	mpm := em.messaging.(*privatemessagingmocks.Manager)
+	mpm.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(true, nil)
 
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return([]*fftypes.Node{
-		{Name: "node1", Owner: "0x12345"},
-	}, nil, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "0x12345").Return(&fftypes.Organization{
-		Identity: "0x12345",
-	}, nil)
-	mdi.On("UpsertMessage", em.ctx, mock.Anything, true, false).Return(fmt.Errorf("pop"))
+	org1 := newTestOrg("org1")
+	node1 := newTestNode("node1", org1)
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(org1, false, nil)
+	mdi.On("UpsertBatch", em.ctx, mock.Anything).Return(nil, nil)
+	mdi.On("InsertDataArray", em.ctx, mock.Anything).Return(nil)
+	mdi.On("InsertMessages", em.ctx, mock.Anything, mock.AnythingOfType("database.PostCompletionHook")).Return(fmt.Errorf("optimization fail"))
+	mdi.On("UpsertMessage", em.ctx, mock.Anything, database.UpsertOptimizationExisting, mock.AnythingOfType("database.PostCompletionHook")).Return(fmt.Errorf("pop"))
 
-	err = em.MessageReceived(mdx, "peer1", b)
-	assert.Regexp(t, "FF10158", err)
+	// no ack as we are simulating termination mid retry
+	mde := newMessageReceivedNoAck("peer1", b)
+	em.messageReceived(mdx, mde)
 
+	mde.AssertExpectations(t)
 	mdi.AssertExpectations(t)
 	mdx.AssertExpectations(t)
+	mpm.AssertExpectations(t)
 }
 
 func TestMessageReceiveMessagePersistDataFail(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	cancel() // to avoid infinite retry
 
-	msg := &fftypes.Message{
-		Header: fftypes.MessageHeader{
-			Identity: fftypes.Identity{
-				Author: "signingOrg",
-				Key:    "0x12345",
-			},
-			ID:     fftypes.NewUUID(),
-			TxType: fftypes.TransactionTypeNone,
-		},
-	}
-	data := &fftypes.Data{
-		ID:    fftypes.NewUUID(),
-		Value: fftypes.Byteable(`{}`),
-	}
-	err := msg.Seal(em.ctx)
-	assert.NoError(t, err)
-	err = data.Seal(em.ctx)
-	assert.NoError(t, err)
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:    fftypes.TransportPayloadTypeMessage,
-		Message: msg,
-		Data:    []*fftypes.Data{data},
-		Group:   &fftypes.Group{},
-	})
+	_, b := sampleBatchTransfer(t, core.TransactionTypeUnpinned)
 
 	mdi := em.database.(*databasemocks.Plugin)
 	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx")
 
-	msh := em.syshandlers.(*syshandlersmocks.SystemHandlers)
-	msh.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(true, nil)
+	mpm := em.messaging.(*privatemessagingmocks.Manager)
+	mpm.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(true, nil)
 
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return([]*fftypes.Node{
-		{Name: "node1", Owner: "0x12345"},
-	}, nil, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "0x12345").Return(&fftypes.Organization{
-		Identity: "0x12345",
-	}, nil)
-	mdi.On("UpsertData", em.ctx, mock.Anything, true, false).Return(fmt.Errorf("pop"))
+	org1 := newTestOrg("org1")
+	node1 := newTestNode("node1", org1)
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(org1, false, nil)
+	mdi.On("UpsertBatch", em.ctx, mock.Anything).Return(nil, nil)
+	mdi.On("InsertDataArray", em.ctx, mock.Anything).Return(fmt.Errorf("optimization miss"))
+	mdi.On("UpsertData", em.ctx, mock.Anything, database.UpsertOptimizationExisting).Return(fmt.Errorf("pop"))
 
-	err = em.MessageReceived(mdx, "peer1", b)
-	assert.Regexp(t, "FF10158", err)
+	// no ack as we are simulating termination mid retry
+	mde := newMessageReceivedNoAck("peer1", b)
+	em.messageReceived(mdx, mde)
 
+	mde.AssertExpectations(t)
 	mdi.AssertExpectations(t)
 	mdx.AssertExpectations(t)
+	mpm.AssertExpectations(t)
 }
 
-func TestMessageReceiveMessagePersistEventFail(t *testing.T) {
+func TestMessageReceiveUnpinnedBatchOk(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	cancel() // to avoid infinite retry
 
-	msg := &fftypes.Message{
-		Header: fftypes.MessageHeader{
-			Identity: fftypes.Identity{
-				Author: "signingOrg",
-				Key:    "0x12345",
-			},
-			ID:     fftypes.NewUUID(),
-			TxType: fftypes.TransactionTypeNone,
-		},
-	}
-	data := &fftypes.Data{
-		ID:    fftypes.NewUUID(),
-		Value: fftypes.Byteable(`{}`),
-	}
-	err := msg.Seal(em.ctx)
-	assert.NoError(t, err)
-	err = data.Seal(em.ctx)
-	assert.NoError(t, err)
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:    fftypes.TransportPayloadTypeMessage,
-		Message: msg,
-		Data:    []*fftypes.Data{data},
-		Group:   &fftypes.Group{},
-	})
+	batch, b := sampleBatchTransfer(t, core.TransactionTypeUnpinned)
 
 	mdi := em.database.(*databasemocks.Plugin)
 	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx")
 
-	msh := em.syshandlers.(*syshandlersmocks.SystemHandlers)
-	msh.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(true, nil)
+	org1 := newTestOrg("org1")
+	node1 := newTestNode("node1", org1)
 
-	mdi.On("GetNodes", em.ctx, mock.Anything).Return([]*fftypes.Node{
-		{Name: "node1", Owner: "0x12345"},
-	}, nil, nil)
-	mdi.On("GetOrganizationByIdentity", em.ctx, "0x12345").Return(&fftypes.Organization{
-		Identity: "0x12345",
-	}, nil)
-	mdi.On("UpsertData", em.ctx, mock.Anything, true, false).Return(nil)
-	mdi.On("UpsertMessage", em.ctx, mock.Anything, true, false).Return(nil)
-	mdi.On("InsertEvent", em.ctx, mock.Anything).Return(fmt.Errorf("pop"))
+	mpm := em.messaging.(*privatemessagingmocks.Manager)
+	mpm.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(true, nil)
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(org1, false, nil)
+	mdi.On("UpsertBatch", em.ctx, mock.Anything).Return(nil, nil)
+	mdi.On("InsertDataArray", em.ctx, mock.Anything).Return(nil)
+	mdi.On("InsertMessages", em.ctx, mock.Anything, mock.AnythingOfType("database.PostCompletionHook")).Return(nil, nil).Run(func(args mock.Arguments) {
+		args[2].(database.PostCompletionHook)()
+	})
+	mdi.On("UpdateMessages", em.ctx, mock.Anything, mock.Anything).Return(nil)
+	mdi.On("InsertEvent", em.ctx, mock.Anything).Return(nil)
+	mdm := em.data.(*datamocks.Manager)
+	mdm.On("UpdateMessageCache", mock.Anything, mock.Anything).Return()
 
-	err = em.MessageReceived(mdx, "peer1", b)
-	assert.Regexp(t, "FF10158", err)
+	mde := newMessageReceived("peer1", b, batch.Payload.Manifest(batch.ID).String())
+	em.messageReceived(mdx, mde)
 
+	mde.AssertExpectations(t)
 	mdi.AssertExpectations(t)
 	mdx.AssertExpectations(t)
+	mdm.AssertExpectations(t)
+	mpm.AssertExpectations(t)
+}
+
+func TestMessageReceiveUnpinnedBatchConfirmMessagesFail(t *testing.T) {
+	em, cancel := newTestEventManager(t)
+	cancel() // to avoid infinite retry
+
+	_, b := sampleBatchTransfer(t, core.TransactionTypeUnpinned)
+
+	mdi := em.database.(*databasemocks.Plugin)
+	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx")
+
+	org1 := newTestOrg("org1")
+	node1 := newTestNode("node1", org1)
+
+	mpm := em.messaging.(*privatemessagingmocks.Manager)
+	mpm.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(true, nil)
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(org1, false, nil)
+	mdi.On("UpsertBatch", em.ctx, mock.Anything).Return(nil, nil)
+	mdi.On("InsertDataArray", em.ctx, mock.Anything).Return(nil)
+	mdi.On("InsertMessages", em.ctx, mock.Anything, mock.AnythingOfType("database.PostCompletionHook")).Return(nil, nil).Run(func(args mock.Arguments) {
+		args[2].(database.PostCompletionHook)()
+	})
+	mdi.On("UpdateMessages", em.ctx, mock.Anything, mock.Anything).Return(fmt.Errorf("pop"))
+	mdm := em.data.(*datamocks.Manager)
+	mdm.On("UpdateMessageCache", mock.Anything, mock.Anything).Return()
+
+	// no ack as we are simulating termination mid retry
+	mde := newMessageReceivedNoAck("peer1", b)
+	em.messageReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
+	mdi.AssertExpectations(t)
+	mdx.AssertExpectations(t)
+	mdm.AssertExpectations(t)
+	mpm.AssertExpectations(t)
+}
+
+func TestMessageReceiveUnpinnedBatchPersistEventFail(t *testing.T) {
+	em, cancel := newTestEventManager(t)
+	cancel() // to avoid infinite retry
+
+	_, b := sampleBatchTransfer(t, core.TransactionTypeUnpinned)
+
+	mdi := em.database.(*databasemocks.Plugin)
+	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx")
+
+	org1 := newTestOrg("org1")
+	node1 := newTestNode("node1", org1)
+
+	mpm := em.messaging.(*privatemessagingmocks.Manager)
+	mpm.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(true, nil)
+	mim := em.identity.(*identitymanagermocks.Manager)
+	mim.On("FindIdentityForVerifier", em.ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: "peer1",
+	}).Return(node1, nil)
+	mim.On("CachedIdentityLookupMustExist", em.ctx, "signingOrg").Return(org1, false, nil)
+	mdi.On("UpsertBatch", em.ctx, mock.Anything).Return(nil, nil)
+	mdi.On("InsertDataArray", em.ctx, mock.Anything).Return(nil)
+	mdi.On("InsertMessages", em.ctx, mock.Anything, mock.AnythingOfType("database.PostCompletionHook")).Return(nil, nil).Run(func(args mock.Arguments) {
+		args[2].(database.PostCompletionHook)()
+	})
+	mdi.On("UpdateMessages", em.ctx, mock.Anything, mock.Anything).Return(nil)
+	mdi.On("InsertEvent", em.ctx, mock.Anything).Return(fmt.Errorf("pop"))
+	mdm := em.data.(*datamocks.Manager)
+	mdm.On("UpdateMessageCache", mock.Anything, mock.Anything).Return()
+
+	// no ack as we are simulating termination mid retry
+	mde := newMessageReceivedNoAck("peer1", b)
+	em.messageReceived(mdx, mde)
+
+	mde.AssertExpectations(t)
+	mdi.AssertExpectations(t)
+	mdx.AssertExpectations(t)
+	mdm.AssertExpectations(t)
+	mpm.AssertExpectations(t)
 }
 
 func TestMessageReceiveMessageEnsureLocalGroupFail(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	cancel() // to avoid infinite retry
 
-	msg := &fftypes.Message{
-		Header: fftypes.MessageHeader{
-			Identity: fftypes.Identity{
-				Author: "signingOrg",
-				Key:    "0x12345",
-			},
-			ID:     fftypes.NewUUID(),
-			TxType: fftypes.TransactionTypeNone,
-		},
-	}
-	data := &fftypes.Data{
-		ID:    fftypes.NewUUID(),
-		Value: fftypes.Byteable(`{}`),
-	}
-	err := msg.Seal(em.ctx)
-	assert.NoError(t, err)
-	err = data.Seal(em.ctx)
-	assert.NoError(t, err)
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:    fftypes.TransportPayloadTypeMessage,
-		Message: msg,
-		Data:    []*fftypes.Data{data},
-		Group:   &fftypes.Group{},
-	})
+	_, b := sampleBatchTransfer(t, core.TransactionTypeUnpinned)
 
-	mdi := em.database.(*databasemocks.Plugin)
 	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx")
 
-	msh := em.syshandlers.(*syshandlersmocks.SystemHandlers)
-	msh.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(false, fmt.Errorf("pop"))
+	mpm := em.messaging.(*privatemessagingmocks.Manager)
+	mpm.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(false, fmt.Errorf("pop"))
 
-	err = em.MessageReceived(mdx, "peer1", b)
-	assert.Regexp(t, "FF10158", err)
+	// no ack as we are simulating termination mid retry
+	mde := newMessageReceivedNoAck("peer1", b)
+	em.messageReceived(mdx, mde)
 
-	mdi.AssertExpectations(t)
+	mde.AssertExpectations(t)
 	mdx.AssertExpectations(t)
+	mpm.AssertExpectations(t)
 }
 
 func TestMessageReceiveMessageEnsureLocalGroupReject(t *testing.T) {
 	em, cancel := newTestEventManager(t)
 	cancel() // to avoid infinite retry
 
-	msg := &fftypes.Message{
-		Header: fftypes.MessageHeader{
-			Identity: fftypes.Identity{
-				Author: "signingOrg",
-				Key:    "0x12345",
-			},
-			ID:     fftypes.NewUUID(),
-			TxType: fftypes.TransactionTypeNone,
-		},
-	}
-	data := &fftypes.Data{
-		ID:    fftypes.NewUUID(),
-		Value: fftypes.Byteable(`{}`),
-	}
-	err := msg.Seal(em.ctx)
-	assert.NoError(t, err)
-	err = data.Seal(em.ctx)
-	assert.NoError(t, err)
-	b, _ := json.Marshal(&fftypes.TransportWrapper{
-		Type:    fftypes.TransportPayloadTypeMessage,
-		Message: msg,
-		Data:    []*fftypes.Data{data},
-		Group:   &fftypes.Group{},
-	})
+	_, b := sampleBatchTransfer(t, core.TransactionTypeUnpinned)
 
-	mdi := em.database.(*databasemocks.Plugin)
 	mdx := &dataexchangemocks.Plugin{}
+	mdx.On("Name").Return("utdx")
 
-	msh := em.syshandlers.(*syshandlersmocks.SystemHandlers)
-	msh.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(false, nil)
+	mpm := em.messaging.(*privatemessagingmocks.Manager)
+	mpm.On("EnsureLocalGroup", em.ctx, mock.Anything).Return(false, nil)
 
-	err = em.MessageReceived(mdx, "peer1", b)
-	assert.NoError(t, err)
+	mde := newMessageReceived("peer1", b, "")
+	em.messageReceived(mdx, mde)
 
-	mdi.AssertExpectations(t)
+	mde.AssertExpectations(t)
 	mdx.AssertExpectations(t)
+	mpm.AssertExpectations(t)
 }

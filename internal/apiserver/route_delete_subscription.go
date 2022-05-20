@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,28 +19,25 @@ package apiserver
 import (
 	"net/http"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
 )
 
 var deleteSubscription = &oapispec.Route{
 	Name:   "deleteSubscription",
-	Path:   "namespaces/{ns}/subscriptions/{subid}",
+	Path:   "subscriptions/{subid}",
 	Method: http.MethodDelete,
 	PathParams: []*oapispec.PathParam{
-		{Name: "ns", ExampleFromConf: config.NamespacesDefault, Description: i18n.MsgTBD},
-		{Name: "subid", Description: i18n.MsgTBD},
+		{Name: "subid", Description: coremsgs.APIParamsSubscriptionID},
 	},
 	QueryParams:     nil,
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
+	Description:     coremsgs.APIEndpointsDeleteSubscription,
 	JSONInputValue:  nil,
-	JSONInputMask:   nil,
 	JSONOutputValue: nil,
 	JSONOutputCodes: []int{http.StatusNoContent}, // Sync operation, no output
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		err = r.Or.DeleteSubscription(r.Ctx, r.PP["ns"], r.PP["subid"])
+		err = getOr(r.Ctx).DeleteSubscription(r.Ctx, extractNamespace(r.PP), r.PP["subid"])
 		return nil, err
 	},
 }

@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -28,12 +28,14 @@ import (
 	"strings"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
-	"github.com/hyperledger/firefly/internal/restclient"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/ffresty"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/events"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 type WebHooks struct {
@@ -56,21 +58,21 @@ type whRequest struct {
 type whResponse struct {
 	Status  int                `json:"status"`
 	Headers fftypes.JSONObject `json:"headers"`
-	Body    fftypes.Byteable   `json:"body"`
+	Body    *fftypes.JSONAny   `json:"body"`
 }
 
 func (wh *WebHooks) Name() string { return "webhooks" }
 
-func (wh *WebHooks) Init(ctx context.Context, prefix config.Prefix, callbacks events.Callbacks) (err error) {
+func (wh *WebHooks) Init(ctx context.Context, config config.Section, callbacks events.Callbacks) (err error) {
 	*wh = WebHooks{
 		ctx:          ctx,
 		capabilities: &events.Capabilities{},
 		callbacks:    callbacks,
-		client:       restclient.New(ctx, prefix),
+		client:       ffresty.New(ctx, config),
 		connID:       fftypes.ShortID(),
 	}
 	// We have a single logical connection, that matches all subscriptions
-	return callbacks.RegisterConnection(wh.connID, func(sr fftypes.SubscriptionRef) bool { return true })
+	return callbacks.RegisterConnection(wh.connID, func(sr core.SubscriptionRef) bool { return true })
 }
 
 func (wh *WebHooks) Capabilities() *events.Capabilities {
@@ -150,21 +152,21 @@ func (wh *WebHooks) GetOptionsSchema(ctx context.Context) string {
 			}
 		}
 	}`,
-		i18n.Expand(ctx, i18n.MsgWebhooksOptFastAck),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptURL),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptMethod),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptJSON),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptReply),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptReplyTag),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptReplyTx),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptHeaders),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptQuery),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptInput),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptInputQuery),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptInputHeaders),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptInputBody),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptInputPath),
-		i18n.Expand(ctx, i18n.MsgWebhooksOptInputReplyTx),
+		i18n.Expand(ctx, coremsgs.WebhooksOptFastAck),
+		i18n.Expand(ctx, coremsgs.WebhooksOptURL),
+		i18n.Expand(ctx, coremsgs.WebhooksOptMethod),
+		i18n.Expand(ctx, coremsgs.WebhooksOptJSON),
+		i18n.Expand(ctx, coremsgs.WebhooksOptReply),
+		i18n.Expand(ctx, coremsgs.WebhooksOptReplyTag),
+		i18n.Expand(ctx, coremsgs.WebhooksOptReplyTx),
+		i18n.Expand(ctx, coremsgs.WebhooksOptHeaders),
+		i18n.Expand(ctx, coremsgs.WebhooksOptQuery),
+		i18n.Expand(ctx, coremsgs.WebhooksOptInput),
+		i18n.Expand(ctx, coremsgs.WebhooksOptInputQuery),
+		i18n.Expand(ctx, coremsgs.WebhooksOptInputHeaders),
+		i18n.Expand(ctx, coremsgs.WebhooksOptInputBody),
+		i18n.Expand(ctx, coremsgs.WebhooksOptInputPath),
+		i18n.Expand(ctx, coremsgs.WebhooksOptInputReplyTx),
 	)
 }
 
@@ -177,7 +179,7 @@ func (wh *WebHooks) buildRequest(options fftypes.JSONObject, firstData fftypes.J
 		replyTx:   options.GetString("replytx"),
 	}
 	if req.url == "" {
-		return nil, i18n.NewError(wh.ctx, i18n.MsgWebhookURLEmpty)
+		return nil, i18n.NewError(wh.ctx, coremsgs.MsgWebhookURLEmpty)
 	}
 	if req.method == "" {
 		req.method = http.MethodPost
@@ -186,7 +188,7 @@ func (wh *WebHooks) buildRequest(options fftypes.JSONObject, firstData fftypes.J
 	for h, v := range headers {
 		s, ok := v.(string)
 		if !ok {
-			return nil, i18n.NewError(wh.ctx, i18n.MsgWebhookInvalidStringMap, "headers", h, v)
+			return nil, i18n.NewError(wh.ctx, coremsgs.MsgWebhookInvalidStringMap, "headers", h, v)
 		}
 		_ = req.r.SetHeader(h, s)
 	}
@@ -198,7 +200,7 @@ func (wh *WebHooks) buildRequest(options fftypes.JSONObject, firstData fftypes.J
 	for q, v := range query {
 		s, ok := v.(string)
 		if !ok {
-			return nil, i18n.NewError(wh.ctx, i18n.MsgWebhookInvalidStringMap, "query", q, v)
+			return nil, i18n.NewError(wh.ctx, coremsgs.MsgWebhookInvalidStringMap, "query", q, v)
 		}
 		_ = req.r.SetQueryParam(q, s)
 	}
@@ -244,7 +246,7 @@ func (wh *WebHooks) buildRequest(options fftypes.JSONObject, firstData fftypes.J
 			if len(txType) > 0 {
 				req.replyTx = txType
 				if strings.EqualFold(txType, "true") {
-					req.replyTx = string(fftypes.TransactionTypeBatchPin)
+					req.replyTx = string(core.TransactionTypeBatchPin)
 				}
 			}
 		}
@@ -252,7 +254,7 @@ func (wh *WebHooks) buildRequest(options fftypes.JSONObject, firstData fftypes.J
 	return req, err
 }
 
-func (wh *WebHooks) ValidateOptions(options *fftypes.SubscriptionOptions) error {
+func (wh *WebHooks) ValidateOptions(options *core.SubscriptionOptions) error {
 	if options.WithData == nil {
 		defaultTrue := true
 		options.WithData = &defaultTrue
@@ -261,9 +263,9 @@ func (wh *WebHooks) ValidateOptions(options *fftypes.SubscriptionOptions) error 
 	return err
 }
 
-func (wh *WebHooks) attemptRequest(sub *fftypes.Subscription, event *fftypes.EventDelivery, data []*fftypes.Data) (req *whRequest, res *whResponse, err error) {
+func (wh *WebHooks) attemptRequest(sub *core.Subscription, event *core.EventDelivery, data core.DataArray) (req *whRequest, res *whResponse, err error) {
 	withData := sub.Options.WithData != nil && *sub.Options.WithData
-	allData := make([]fftypes.Byteable, 0, len(data))
+	allData := make([]*fftypes.JSONAny, 0, len(data))
 	var firstData fftypes.JSONObject
 	var valid bool
 	if withData {
@@ -332,24 +334,25 @@ func (wh *WebHooks) attemptRequest(sub *fftypes.Subscription, event *fftypes.Eve
 		var resData interface{}
 		err = json.NewDecoder(resp.RawBody()).Decode(&resData)
 		if err != nil {
-			return nil, nil, i18n.WrapError(wh.ctx, err, i18n.MsgWebhooksReplyBadJSON)
+			return nil, nil, i18n.WrapError(wh.ctx, err, coremsgs.MsgWebhooksReplyBadJSON)
 		}
-		res.Body, _ = json.Marshal(&resData) // we know we can re-marshal it
+		b, _ := json.Marshal(&resData) // we know we can re-marshal It
+		res.Body = fftypes.JSONAnyPtrBytes(b)
 	} else {
 		// Anything other than JSON, gets returned as a JSON string in base64 encoding
 		buf := &bytes.Buffer{}
-		buf.WriteRune('"')
+		buf.WriteByte('"')
 		b64Encoder := base64.NewEncoder(base64.StdEncoding, buf)
 		_, _ = io.Copy(b64Encoder, resp.RawBody())
 		_ = b64Encoder.Close()
-		buf.WriteRune('"')
-		res.Body = buf.Bytes()
+		buf.WriteByte('"')
+		res.Body = fftypes.JSONAnyPtrBytes(buf.Bytes())
 	}
 
 	return req, res, nil
 }
 
-func (wh *WebHooks) doDelivery(connID string, reply bool, sub *fftypes.Subscription, event *fftypes.EventDelivery, data []*fftypes.Data) error {
+func (wh *WebHooks) doDelivery(connID string, reply bool, sub *core.Subscription, event *core.EventDelivery, data core.DataArray) error {
 	req, res, gwErr := wh.attemptRequest(sub, event, data)
 	if gwErr != nil {
 		// Generate a bad-gateway error response - we always want to send something back,
@@ -363,7 +366,7 @@ func (wh *WebHooks) doDelivery(connID string, reply bool, sub *fftypes.Subscript
 			Headers: fftypes.JSONObject{
 				"Content-Type": "application/json",
 			},
-			Body: b,
+			Body: fftypes.JSONAnyPtrBytes(b),
 		}
 	}
 	b, _ := json.Marshal(&res)
@@ -371,26 +374,27 @@ func (wh *WebHooks) doDelivery(connID string, reply bool, sub *fftypes.Subscript
 
 	// Emit the response
 	if reply {
-		txType := fftypes.FFEnum(strings.ToLower(sub.Options.TransportOptions().GetString("replytx")))
+		txType := core.FFEnum(strings.ToLower(sub.Options.TransportOptions().GetString("replytx")))
 		if req != nil && req.replyTx != "" {
-			txType = fftypes.FFEnum(strings.ToLower(req.replyTx))
+			txType = core.FFEnum(strings.ToLower(req.replyTx))
 		}
-		wh.callbacks.DeliveryResponse(connID, &fftypes.EventDeliveryResponse{
+		wh.callbacks.DeliveryResponse(connID, &core.EventDeliveryResponse{
 			ID:           event.ID,
 			Rejected:     false,
 			Subscription: event.Subscription,
-			Reply: &fftypes.MessageInOut{
-				Message: fftypes.Message{
-					Header: fftypes.MessageHeader{
+			Reply: &core.MessageInOut{
+				Message: core.Message{
+					Header: core.MessageHeader{
 						CID:    event.Message.Header.ID,
 						Group:  event.Message.Header.Group,
 						Type:   event.Message.Header.Type,
+						Topics: event.Message.Header.Topics,
 						Tag:    sub.Options.TransportOptions().GetString("replytag"),
 						TxType: txType,
 					},
 				},
-				InlineData: fftypes.InlineData{
-					{Value: b},
+				InlineData: core.InlineData{
+					{Value: fftypes.JSONAnyPtrBytes(b)},
 				},
 			},
 		})
@@ -398,7 +402,7 @@ func (wh *WebHooks) doDelivery(connID string, reply bool, sub *fftypes.Subscript
 	return nil
 }
 
-func (wh *WebHooks) DeliveryRequest(connID string, sub *fftypes.Subscription, event *fftypes.EventDelivery, data []*fftypes.Data) error {
+func (wh *WebHooks) DeliveryRequest(connID string, sub *core.Subscription, event *core.EventDelivery, data core.DataArray) error {
 	if event.Message == nil && sub.Options.WithData != nil && *sub.Options.WithData {
 		log.L(wh.ctx).Debugf("Webhook withData=true subscription called with non-message event '%s'", event.ID)
 		return nil
@@ -410,7 +414,7 @@ func (wh *WebHooks) DeliveryRequest(connID string, sub *fftypes.Subscription, ev
 		// avoid loops - and there's no way for us to detect here if a user has configured correctly
 		// to avoid a loop.
 		log.L(wh.ctx).Debugf("Webhook subscription with reply enabled called with reply event '%s'", event.ID)
-		wh.callbacks.DeliveryResponse(connID, &fftypes.EventDeliveryResponse{
+		wh.callbacks.DeliveryResponse(connID, &core.EventDeliveryResponse{
 			ID:           event.ID,
 			Rejected:     false,
 			Subscription: event.Subscription,

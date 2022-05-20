@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -17,28 +17,26 @@
 package apiserver
 
 import (
-	"context"
 	"net/http"
 
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
-var postResetConfig = &oapispec.Route{
-	Name:            "postResetConfig",
+var adminPostResetConfig = &oapispec.Route{
+	Name:            "adminPostResetConfig",
 	Path:            "config/reset",
 	Method:          http.MethodPost,
 	PathParams:      nil,
 	QueryParams:     nil,
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
-	JSONInputValue:  func() interface{} { return &fftypes.Byteable{} },
+	Description:     coremsgs.APIEndpointsAdminPostResetConfig,
+	JSONInputValue:  func() interface{} { return fftypes.JSONAnyPtr("{}") },
 	JSONOutputValue: nil,
 	JSONOutputCodes: []int{http.StatusNoContent},
-	JSONInputSchema: func(ctx context.Context) string { return emptyObjectSchema },
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		r.Or.ResetConfig(r.Ctx)
+		getOr(r.Ctx).ResetConfig(r.Ctx)
 		return nil, nil
 	},
 }

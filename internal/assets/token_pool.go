@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -18,133 +18,139 @@ package assets
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/internal/txcommon"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
-func addTokenPoolCreateInputs(op *fftypes.Operation, pool *fftypes.TokenPool) {
-	op.Input = fftypes.JSONObject{
-		"id":        pool.ID.String(),
-		"namespace": pool.Namespace,
-		"name":      pool.Name,
-		"config":    pool.Config,
-	}
-}
-
-func retrieveTokenPoolCreateInputs(ctx context.Context, op *fftypes.Operation, pool *fftypes.TokenPool) (err error) {
-	input := &op.Input
-	pool.ID, err = fftypes.ParseUUID(ctx, input.GetString("id"))
-	if err != nil {
-		return err
-	}
-	pool.Namespace = input.GetString("namespace")
-	pool.Name = input.GetString("name")
-	if pool.Namespace == "" || pool.Name == "" {
-		return fmt.Errorf("namespace or name missing from inputs")
-	}
-	pool.Config = input.GetObject("config")
-	return nil
-}
-
-func (am *assetManager) CreateTokenPool(ctx context.Context, ns string, connector string, pool *fftypes.TokenPool, waitConfirm bool) (*fftypes.TokenPool, error) {
-	return am.createTokenPoolWithID(ctx, fftypes.NewUUID(), ns, connector, pool, waitConfirm)
-}
-
-func (am *assetManager) createTokenPoolWithID(ctx context.Context, id *fftypes.UUID, ns string, connector string, pool *fftypes.TokenPool, waitConfirm bool) (*fftypes.TokenPool, error) {
+func (am *assetManager) CreateTokenPool(ctx context.Context, ns string, pool *core.TokenPool, waitConfirm bool) (*core.TokenPool, error) {
 	if err := am.data.VerifyNamespaceExists(ctx, ns); err != nil {
 		return nil, err
 	}
+	if err := core.ValidateFFNameFieldNoUUID(ctx, pool.Name, "name"); err != nil {
+		return nil, err
+	}
+	if existing, err := am.database.GetTokenPool(ctx, ns, pool.Name); err != nil {
+		return nil, err
+	} else if existing != nil {
+		return nil, i18n.NewError(ctx, coremsgs.MsgTokenPoolDuplicate, pool.Name)
+	}
+	pool.ID = fftypes.NewUUID()
+	pool.Namespace = ns
 
-	if pool.Key == "" {
-		org, err := am.identity.GetLocalOrganization(ctx)
+	if pool.Connector == "" {
+		connector, err := am.getDefaultTokenConnector(ctx, ns)
 		if err != nil {
 			return nil, err
 		}
-		pool.Key = org.Identity
+		pool.Connector = connector
 	}
 
-	plugin, err := am.selectTokenPlugin(ctx, connector)
+	var err error
+	pool.Key, err = am.identity.NormalizeSigningKey(ctx, pool.Key, am.keyNormalization)
+	if err != nil {
+		return nil, err
+	}
+	return am.createTokenPoolInternal(ctx, pool, waitConfirm)
+}
+
+func (am *assetManager) createTokenPoolInternal(ctx context.Context, pool *core.TokenPool, waitConfirm bool) (*core.TokenPool, error) {
+	plugin, err := am.selectTokenPlugin(ctx, pool.Connector)
 	if err != nil {
 		return nil, err
 	}
 
-	pool.ID = id
-	pool.Namespace = ns
-	pool.Connector = connector
-
 	if waitConfirm {
-		requestID := fftypes.NewUUID()
-		return am.syncasync.SendConfirmTokenPool(ctx, ns, requestID, func(ctx context.Context) error {
-			_, err := am.createTokenPoolWithID(ctx, requestID, ns, connector, pool, false)
+		return am.syncasync.WaitForTokenPool(ctx, pool.Namespace, pool.ID, func(ctx context.Context) error {
+			_, err := am.createTokenPoolInternal(ctx, pool, false)
 			return err
 		})
 	}
 
-	tx := &fftypes.Transaction{
-		ID: fftypes.NewUUID(),
-		Subject: fftypes.TransactionSubject{
-			Namespace: ns,
-			Type:      fftypes.TransactionTypeTokenPool,
-			Signer:    pool.Key,
-			Reference: id,
-		},
-		Created: fftypes.Now(),
-		Status:  fftypes.OpStatusPending,
-	}
-	tx.Hash = tx.Subject.Hash()
-	err = am.database.UpsertTransaction(ctx, tx, false /* should be new, or idempotent replay */)
+	var op *core.Operation
+	err = am.database.RunAsGroup(ctx, func(ctx context.Context) (err error) {
+		txid, err := am.txHelper.SubmitNewTransaction(ctx, pool.Namespace, core.TransactionTypeTokenPool)
+		if err != nil {
+			return err
+		}
+
+		pool.TX.ID = txid
+		pool.TX.Type = core.TransactionTypeTokenPool
+
+		op = core.NewOperation(
+			plugin,
+			pool.Namespace,
+			txid,
+			core.OpTypeTokenCreatePool)
+		if err = txcommon.AddTokenPoolCreateInputs(op, pool); err == nil {
+			err = am.database.InsertOperation(ctx, op)
+		}
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	pool.TX.ID = tx.ID
-	pool.TX.Type = tx.Subject.Type
-
-	op := fftypes.NewTXOperation(
-		plugin,
-		ns,
-		tx.ID,
-		"",
-		fftypes.OpTypeTokenCreatePool,
-		fftypes.OpStatusPending,
-		"")
-	addTokenPoolCreateInputs(op, pool)
-	err = am.database.UpsertOperation(ctx, op, false)
-	if err != nil {
-		return nil, err
-	}
-
-	return pool, plugin.CreateTokenPool(ctx, op.ID, pool)
+	_, err = am.operations.RunOperation(ctx, opCreatePool(op, pool))
+	return pool, err
 }
 
-func (am *assetManager) GetTokenPools(ctx context.Context, ns string, filter database.AndFilter) ([]*fftypes.TokenPool, *database.FilterResult, error) {
-	if err := fftypes.ValidateFFNameField(ctx, ns, "namespace"); err != nil {
+func (am *assetManager) ActivateTokenPool(ctx context.Context, pool *core.TokenPool) error {
+	plugin, err := am.selectTokenPlugin(ctx, pool.Connector)
+	if err != nil {
+		return err
+	}
+
+	var op *core.Operation
+	err = am.database.RunAsGroup(ctx, func(ctx context.Context) (err error) {
+		fb := database.OperationQueryFactory.NewFilter(ctx)
+		filter := fb.And(
+			fb.Eq("tx", pool.TX.ID),
+			fb.Eq("type", core.OpTypeTokenActivatePool),
+		)
+		if existing, _, err := am.database.GetOperations(ctx, filter); err != nil {
+			return err
+		} else if len(existing) > 0 {
+			log.L(ctx).Debugf("Dropping duplicate token pool activation request for pool %s", pool.ID)
+			return nil
+		}
+
+		op = core.NewOperation(
+			plugin,
+			pool.Namespace,
+			pool.TX.ID,
+			core.OpTypeTokenActivatePool)
+		txcommon.AddTokenPoolActivateInputs(op, pool.ID)
+		return am.database.InsertOperation(ctx, op)
+	})
+	if err != nil || op == nil {
+		return err
+	}
+
+	_, err = am.operations.RunOperation(ctx, opActivatePool(op, pool))
+	return err
+}
+
+func (am *assetManager) GetTokenPools(ctx context.Context, ns string, filter database.AndFilter) ([]*core.TokenPool, *database.FilterResult, error) {
+	if err := core.ValidateFFNameField(ctx, ns, "namespace"); err != nil {
 		return nil, nil, err
 	}
 	return am.database.GetTokenPools(ctx, am.scopeNS(ns, filter))
 }
 
-func (am *assetManager) GetTokenPoolsByType(ctx context.Context, ns string, connector string, filter database.AndFilter) ([]*fftypes.TokenPool, *database.FilterResult, error) {
-	if _, err := am.selectTokenPlugin(ctx, connector); err != nil {
-		return nil, nil, err
-	}
-	if err := fftypes.ValidateFFNameField(ctx, ns, "namespace"); err != nil {
-		return nil, nil, err
-	}
-	return am.database.GetTokenPools(ctx, am.scopeNS(ns, filter))
-}
-
-func (am *assetManager) GetTokenPool(ctx context.Context, ns, connector, poolName string) (*fftypes.TokenPool, error) {
+func (am *assetManager) GetTokenPool(ctx context.Context, ns, connector, poolName string) (*core.TokenPool, error) {
 	if _, err := am.selectTokenPlugin(ctx, connector); err != nil {
 		return nil, err
 	}
-	if err := fftypes.ValidateFFNameField(ctx, ns, "namespace"); err != nil {
+	if err := core.ValidateFFNameField(ctx, ns, "namespace"); err != nil {
 		return nil, err
 	}
-	if err := fftypes.ValidateFFNameField(ctx, poolName, "name"); err != nil {
+	if err := core.ValidateFFNameFieldNoUUID(ctx, poolName, "name"); err != nil {
 		return nil, err
 	}
 	pool, err := am.database.GetTokenPool(ctx, ns, poolName)
@@ -152,21 +158,21 @@ func (am *assetManager) GetTokenPool(ctx context.Context, ns, connector, poolNam
 		return nil, err
 	}
 	if pool == nil {
-		return nil, i18n.NewError(ctx, i18n.Msg404NotFound)
+		return nil, i18n.NewError(ctx, coremsgs.Msg404NotFound)
 	}
 	return pool, nil
 }
 
-func (am *assetManager) GetTokenPoolByNameOrID(ctx context.Context, ns, poolNameOrID string) (*fftypes.TokenPool, error) {
-	if err := fftypes.ValidateFFNameField(ctx, ns, "namespace"); err != nil {
+func (am *assetManager) GetTokenPoolByNameOrID(ctx context.Context, ns, poolNameOrID string) (*core.TokenPool, error) {
+	if err := core.ValidateFFNameField(ctx, ns, "namespace"); err != nil {
 		return nil, err
 	}
 
-	var pool *fftypes.TokenPool
+	var pool *core.TokenPool
 
 	poolID, err := fftypes.ParseUUID(ctx, poolNameOrID)
 	if err != nil {
-		if err := fftypes.ValidateFFNameField(ctx, poolNameOrID, "name"); err != nil {
+		if err := core.ValidateFFNameField(ctx, poolNameOrID, "name"); err != nil {
 			return nil, err
 		}
 		if pool, err = am.database.GetTokenPool(ctx, ns, poolNameOrID); err != nil {
@@ -176,12 +182,7 @@ func (am *assetManager) GetTokenPoolByNameOrID(ctx context.Context, ns, poolName
 		return nil, err
 	}
 	if pool == nil {
-		return nil, i18n.NewError(ctx, i18n.Msg404NotFound)
+		return nil, i18n.NewError(ctx, coremsgs.Msg404NotFound)
 	}
 	return pool, nil
-}
-
-func (am *assetManager) ValidateTokenPoolTx(ctx context.Context, pool *fftypes.TokenPool, protocolTxID string) error {
-	// TODO: validate that the given token pool was created with the given protocolTxId
-	return nil
 }

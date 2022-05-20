@@ -21,10 +21,11 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
 	"github.com/hyperledger/firefly/mocks/databasemocks"
 	"github.com/hyperledger/firefly/mocks/datamocks"
 	"github.com/hyperledger/firefly/mocks/identitymanagermocks"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -34,16 +35,15 @@ func TestBroadcastTokenPoolNSGetFail(t *testing.T) {
 	defer cancel()
 	mdm := bm.data.(*datamocks.Manager)
 
-	pool := &fftypes.TokenPoolAnnouncement{
-		TokenPool: fftypes.TokenPool{
-			ID:         fftypes.NewUUID(),
-			Namespace:  "ns1",
-			Name:       "mypool",
-			Type:       fftypes.TokenTypeNonFungible,
-			ProtocolID: "N1",
-			Symbol:     "COIN",
+	pool := &core.TokenPoolAnnouncement{
+		Pool: &core.TokenPool{
+			ID:        fftypes.NewUUID(),
+			Namespace: "ns1",
+			Name:      "mypool",
+			Type:      core.TokenTypeNonFungible,
+			Locator:   "N1",
+			Symbol:    "COIN",
 		},
-		ProtocolTxID: "tx123",
 	}
 
 	mdm.On("VerifyNamespaceExists", mock.Anything, "ns1").Return(fmt.Errorf("pop"))
@@ -60,20 +60,19 @@ func TestBroadcastTokenPoolInvalid(t *testing.T) {
 	mdi := bm.database.(*databasemocks.Plugin)
 	mdm := bm.data.(*datamocks.Manager)
 
-	pool := &fftypes.TokenPoolAnnouncement{
-		TokenPool: fftypes.TokenPool{
-			ID:         fftypes.NewUUID(),
-			Namespace:  "",
-			Name:       "",
-			Type:       fftypes.TokenTypeNonFungible,
-			ProtocolID: "N1",
-			Symbol:     "COIN",
+	pool := &core.TokenPoolAnnouncement{
+		Pool: &core.TokenPool{
+			ID:        fftypes.NewUUID(),
+			Namespace: "",
+			Name:      "",
+			Type:      core.TokenTypeNonFungible,
+			Locator:   "N1",
+			Symbol:    "COIN",
 		},
-		ProtocolTxID: "tx123",
 	}
 
 	_, err := bm.BroadcastTokenPool(context.Background(), "ns1", pool, false)
-	assert.Regexp(t, "FF10131", err)
+	assert.Regexp(t, "FF00140", err)
 
 	mdi.AssertExpectations(t)
 	mdm.AssertExpectations(t)
@@ -82,31 +81,27 @@ func TestBroadcastTokenPoolInvalid(t *testing.T) {
 func TestBroadcastTokenPoolBroadcastFail(t *testing.T) {
 	bm, cancel := newTestBroadcast(t)
 	defer cancel()
-	mdi := bm.database.(*databasemocks.Plugin)
 	mdm := bm.data.(*datamocks.Manager)
 	mim := bm.identity.(*identitymanagermocks.Manager)
 
-	pool := &fftypes.TokenPoolAnnouncement{
-		TokenPool: fftypes.TokenPool{
-			ID:         fftypes.NewUUID(),
-			Namespace:  "ns1",
-			Name:       "mypool",
-			Type:       fftypes.TokenTypeNonFungible,
-			ProtocolID: "N1",
-			Symbol:     "COIN",
+	pool := &core.TokenPoolAnnouncement{
+		Pool: &core.TokenPool{
+			ID:        fftypes.NewUUID(),
+			Namespace: "ns1",
+			Name:      "mypool",
+			Type:      core.TokenTypeNonFungible,
+			Locator:   "N1",
+			Symbol:    "COIN",
 		},
-		ProtocolTxID: "tx123",
 	}
 
-	mim.On("ResolveInputIdentity", mock.Anything, mock.Anything).Return(nil)
+	mim.On("ResolveInputSigningIdentity", mock.Anything, "ns1", mock.Anything).Return(nil)
 	mdm.On("VerifyNamespaceExists", mock.Anything, "ns1").Return(nil)
-	mdi.On("UpsertData", mock.Anything, mock.Anything, true, false).Return(nil)
-	mdi.On("InsertMessageLocal", mock.Anything, mock.Anything).Return(fmt.Errorf("pop"))
+	mdm.On("WriteNewMessage", mock.Anything, mock.Anything).Return(fmt.Errorf("pop"))
 
 	_, err := bm.BroadcastTokenPool(context.Background(), "ns1", pool, false)
 	assert.EqualError(t, err, "pop")
 
-	mdi.AssertExpectations(t)
 	mdm.AssertExpectations(t)
 	mim.AssertExpectations(t)
 }
@@ -114,31 +109,27 @@ func TestBroadcastTokenPoolBroadcastFail(t *testing.T) {
 func TestBroadcastTokenPoolOk(t *testing.T) {
 	bm, cancel := newTestBroadcast(t)
 	defer cancel()
-	mdi := bm.database.(*databasemocks.Plugin)
 	mdm := bm.data.(*datamocks.Manager)
 	mim := bm.identity.(*identitymanagermocks.Manager)
 
-	pool := &fftypes.TokenPoolAnnouncement{
-		TokenPool: fftypes.TokenPool{
-			ID:         fftypes.NewUUID(),
-			Namespace:  "ns1",
-			Name:       "mypool",
-			Type:       fftypes.TokenTypeNonFungible,
-			ProtocolID: "N1",
-			Symbol:     "COIN",
+	pool := &core.TokenPoolAnnouncement{
+		Pool: &core.TokenPool{
+			ID:        fftypes.NewUUID(),
+			Namespace: "ns1",
+			Name:      "mypool",
+			Type:      core.TokenTypeNonFungible,
+			Locator:   "N1",
+			Symbol:    "COIN",
 		},
-		ProtocolTxID: "tx123",
 	}
 
-	mim.On("ResolveInputIdentity", mock.Anything, mock.Anything).Return(nil)
+	mim.On("ResolveInputSigningIdentity", mock.Anything, "ns1", mock.Anything).Return(nil)
 	mdm.On("VerifyNamespaceExists", mock.Anything, "ns1").Return(nil)
-	mdi.On("UpsertData", mock.Anything, mock.Anything, true, false).Return(nil)
-	mdi.On("InsertMessageLocal", mock.Anything, mock.Anything).Return(nil)
+	mdm.On("WriteNewMessage", mock.Anything, mock.Anything).Return(nil)
 
 	_, err := bm.BroadcastTokenPool(context.Background(), "ns1", pool, false)
 	assert.NoError(t, err)
 
-	mdi.AssertExpectations(t)
 	mdm.AssertExpectations(t)
 	mim.AssertExpectations(t)
 }

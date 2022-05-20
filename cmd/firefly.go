@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -26,24 +26,27 @@ import (
 	"syscall"
 
 	"github.com/gorilla/mux"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
 	"github.com/hyperledger/firefly/internal/apiserver"
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly/internal/coreconfig"
 	"github.com/hyperledger/firefly/internal/orchestrator"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
+const configSuffix = "core"
+
 var sigs = make(chan os.Signal, 1)
 
 var rootCmd = &cobra.Command{
 	Use:   "firefly",
-	Short: "Firefly is an API toolkit for building enterprise grade multi-party systems",
-	Long: `You build great user experiences and business logic in your favorite language,
-and let Firefly take care of the REST. The event-driven programming model gives you the
-building blocks needed for high performance, scalable multi-party systems, and the power
-to digital transformation your business ecosystem.`,
+	Short: "FireFly is a complete stack for enterprises to build and scale secure Web3 applications",
+	Long: `Hyperledger FireFly is the first open source Supernode: a complete stack for
+enterprises to build and scale secure Web3 applications. The FireFly API for digital
+assets, data flows, and blockchain transactions makes it radically faster to build
+production-ready apps on popular chains and protocols.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return run()
 	},
@@ -56,9 +59,11 @@ var showConfigCommand = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		// Initialize config of all plugins
 		getOrchestrator()
-		_ = config.ReadConfig(cfgFile)
+		_ = config.ReadConfig(configSuffix, cfgFile)
 
 		// Print it all out
+		fmt.Printf("%-64s %v\n", "Key", "Value")
+		fmt.Print("-----------------------------------------------------------------------------------\n")
 		for _, k := range config.GetKnownKeys() {
 			fmt.Printf("%-64s %v\n", k, config.Get(config.RootKey(k)))
 		}
@@ -78,28 +83,29 @@ func getOrchestrator() orchestrator.Orchestrator {
 	if _utOrchestrator != nil {
 		return _utOrchestrator
 	}
-	return orchestrator.NewOrchestrator()
+	return orchestrator.NewOrchestrator(true)
 }
 
 // Execute is called by the main method of the package
 func Execute() error {
-	apiserver.InitConfig()
 	return rootCmd.Execute()
 }
 
 func run() error {
 
 	// Read the configuration
-	config.Reset()
-	err := config.ReadConfig(cfgFile)
+	coreconfig.Reset()
+	apiserver.InitConfig()
+	err := config.ReadConfig(configSuffix, cfgFile)
 
 	// Setup logging after reading config (even if failed), to output header correctly
 	ctx, cancelCtx := context.WithCancel(context.Background())
-	ctx = log.WithLogger(ctx, logrus.WithField("pid", os.Getpid()))
+	ctx = log.WithLogger(ctx, logrus.WithField("pid", fmt.Sprintf("%d", os.Getpid())))
+	ctx = log.WithLogger(ctx, logrus.WithField("prefix", config.GetString(coreconfig.NodeName)))
 
 	config.SetupLogging(ctx)
-	log.L(ctx).Infof("Project Firefly")
-	log.L(ctx).Infof("© Copyright 2021 Kaleido, Inc.")
+	log.L(ctx).Infof("Hyperledger FireFly")
+	log.L(ctx).Infof("© Copyright 2022 Kaleido, Inc.")
 
 	// Deferred error return from reading config
 	if err != nil {
@@ -125,6 +131,12 @@ func run() error {
 		case <-orchestratorCtx.Done():
 			log.L(ctx).Infof("Restarting due to configuration change")
 			o.WaitStop()
+			// Re-read the configuration
+			coreconfig.Reset()
+			if err := config.ReadConfig(configSuffix, cfgFile); err != nil {
+				cancelCtx()
+				return err
+			}
 		case err := <-errChan:
 			cancelCtx()
 			return err
@@ -135,7 +147,7 @@ func run() error {
 func startFirefly(ctx context.Context, cancelCtx context.CancelFunc, o orchestrator.Orchestrator, as apiserver.Server, errChan chan error) {
 	var err error
 	// Start debug listener
-	debugPort := config.GetInt(config.DebugPort)
+	debugPort := config.GetInt(coreconfig.DebugPort)
 	if debugPort >= 0 {
 		r := mux.NewRouter()
 		r.PathPrefix("/debug/pprof/cmdline").HandlerFunc(pprof.Cmdline)

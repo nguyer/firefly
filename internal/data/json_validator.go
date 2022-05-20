@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -18,37 +18,48 @@ package data
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
-	"github.com/hyperledger/firefly/pkg/fftypes"
-	"github.com/xeipuuv/gojsonschema"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
+	"github.com/santhosh-tekuri/jsonschema/v5"
 )
 
 type jsonValidator struct {
 	id       *fftypes.UUID
 	size     int64
 	ns       string
-	datatype *fftypes.DatatypeRef
-	schema   *gojsonschema.Schema
+	datatype *core.DatatypeRef
+	schema   *jsonschema.Schema
 }
 
-func newJSONValidator(ctx context.Context, ns string, datatype *fftypes.Datatype) (*jsonValidator, error) {
+func newJSONValidator(ctx context.Context, ns string, datatype *core.Datatype) (*jsonValidator, error) {
 	jv := &jsonValidator{
 		id: datatype.ID,
 		ns: ns,
-		datatype: &fftypes.DatatypeRef{
+		datatype: &core.DatatypeRef{
 			Name:    datatype.Name,
 			Version: datatype.Version,
 		},
 	}
 
-	schemaBytes := []byte(datatype.Value)
-	sl := gojsonschema.NewBytesLoader(schemaBytes)
-	schema, err := gojsonschema.NewSchema(sl)
+	var schemaBytes []byte
+	if datatype.Value != nil {
+		schemaBytes = []byte(*datatype.Value)
+	}
+	c := jsonschema.NewCompiler()
+	c.Draft = jsonschema.Draft2020
+	err := c.AddResource(datatype.Name, strings.NewReader(datatype.Value.String()))
 	if err != nil {
-		return nil, i18n.WrapError(ctx, err, i18n.MsgSchemaLoadFailed, jv.datatype)
+		return nil, i18n.WrapError(ctx, err, coremsgs.MsgSchemaLoadFailed, jv.datatype)
+	}
+	schema, err := c.Compile(datatype.Name)
+	if err != nil {
+		return nil, i18n.WrapError(ctx, err, coremsgs.MsgSchemaLoadFailed, jv.datatype)
 	}
 	jv.schema = schema
 	jv.size = int64(len(schemaBytes))
@@ -57,45 +68,45 @@ func newJSONValidator(ctx context.Context, ns string, datatype *fftypes.Datatype
 	return jv, nil
 }
 
-func (jv *jsonValidator) Validate(ctx context.Context, data *fftypes.Data) error {
+func (jv *jsonValidator) Validate(ctx context.Context, data *core.Data) error {
 	return jv.ValidateValue(ctx, data.Value, data.Hash)
 }
 
-func (jv *jsonValidator) ValidateValue(ctx context.Context, value fftypes.Byteable, expectedHash *fftypes.Bytes32) error {
+func (jv *jsonValidator) ValidateValue(ctx context.Context, value *fftypes.JSONAny, expectedHash *fftypes.Bytes32) error {
 	if value == nil {
-		return i18n.NewError(ctx, i18n.MsgDataValueIsNull)
+		return i18n.NewError(ctx, coremsgs.MsgDataValueIsNull)
 	}
 
 	if expectedHash != nil {
 		hash := value.Hash()
 		if *hash != *expectedHash {
-			return i18n.NewError(ctx, i18n.MsgDataInvalidHash, hash, expectedHash)
+			return i18n.NewError(ctx, coremsgs.MsgDataInvalidHash, hash, expectedHash)
 		}
 	}
 
-	err := jv.validateBytes(ctx, []byte(value))
-	if err != nil {
-		log.L(ctx).Warnf("JSON schema %s [%v] validation failed: %s", jv.datatype, jv.id, err)
-	}
-	return err
+	return jv.validateJSONString(ctx, value.String())
 }
 
-func (jv *jsonValidator) validateBytes(ctx context.Context, b []byte) error {
-	res, err := jv.schema.Validate(gojsonschema.NewBytesLoader(b))
+func (jv *jsonValidator) validateJSONString(ctx context.Context, input string) error {
+	inputValue, err := jsonDecode(input)
 	if err != nil {
-		return i18n.WrapError(ctx, err, i18n.MsgDataCannotBeValidated)
+		return i18n.NewError(ctx, i18n.MsgJSONObjectParseFailed, input, err)
 	}
-	if !res.Valid() {
-		errStrings := make([]string, len(res.Errors()))
-		for i, e := range res.Errors() {
-			errStrings[i] = e.String()
-		}
-		errors := strings.Join(errStrings, ",")
-		return i18n.NewError(ctx, i18n.MsgJSONDataInvalidPerSchema, jv.datatype, errors)
+	if err := jv.schema.Validate(inputValue); err != nil {
+		log.L(ctx).Warnf("JSON schema %s [%v] validation failed: %s", jv.datatype, jv.id, err)
+		return i18n.NewError(ctx, coremsgs.MsgJSONDataInvalidPerSchema, jv.datatype, err)
 	}
 	return nil
 }
 
 func (jv *jsonValidator) Size() int64 {
 	return jv.size
+}
+
+func jsonDecode(input string) (interface{}, error) {
+	var output interface{}
+	if err := json.Unmarshal([]byte(input), &output); err != nil {
+		return nil, err
+	}
+	return output, nil
 }

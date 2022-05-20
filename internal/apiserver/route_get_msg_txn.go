@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,28 +19,26 @@ package apiserver
 import (
 	"net/http"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 )
 
 var getMsgTxn = &oapispec.Route{
 	Name:   "getMsgTxn",
-	Path:   "namespaces/{ns}/messages/{msgid}/transaction",
+	Path:   "messages/{msgid}/transaction",
 	Method: http.MethodGet,
 	PathParams: []*oapispec.PathParam{
-		{Name: "ns", ExampleFromConf: config.NamespacesDefault, Description: i18n.MsgTBD},
-		{Name: "msgid", Description: i18n.MsgTBD},
+		{Name: "msgid", Description: coremsgs.APIParamsMessageID},
 	},
 	QueryParams:     nil,
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
+	Description:     coremsgs.APIEndpointsGetMsgTxn,
 	JSONInputValue:  nil,
-	JSONOutputValue: func() interface{} { return &fftypes.Transaction{} },
+	JSONOutputValue: func() interface{} { return &core.Transaction{} },
 	JSONOutputCodes: []int{http.StatusOK},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		output, err = r.Or.GetMessageTransaction(r.Ctx, r.PP["ns"], r.PP["msgid"])
+		output, err = getOr(r.Ctx).GetMessageTransaction(r.Ctx, extractNamespace(r.PP), r.PP["msgid"])
 		return output, err
 	},
 }

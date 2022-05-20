@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,14 +19,18 @@ package sqlcommon
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/sirupsen/logrus"
 
 	// Import migrate file source
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -37,35 +41,52 @@ type SQLCommon struct {
 	capabilities *database.Capabilities
 	callbacks    database.Callbacks
 	provider     Provider
+	features     SQLFeatures
 }
 
 type txContextKey struct{}
 
 type txWrapper struct {
-	sqlTX      *sql.Tx
-	postCommit []func()
+	sqlTX           *sql.Tx
+	preCommitEvents []*core.Event
+	postCommit      []func()
+	tableLocks      []string
 }
 
-func (s *SQLCommon) Init(ctx context.Context, provider Provider, prefix config.Prefix, callbacks database.Callbacks, capabilities *database.Capabilities) (err error) {
+func (s *SQLCommon) Init(ctx context.Context, provider Provider, config config.Section, callbacks database.Callbacks, capabilities *database.Capabilities) (err error) {
 	s.capabilities = capabilities
 	s.callbacks = callbacks
 	s.provider = provider
-	if s.provider == nil || s.provider.PlaceholderFormat() == nil || sequenceColumn == "" {
+	if s.provider != nil {
+		s.features = s.provider.Features()
+	}
+	if s.provider == nil || s.features.PlaceholderFormat == nil {
 		log.L(ctx).Errorf("Invalid SQL options from provider '%T'", s.provider)
-		return i18n.NewError(ctx, i18n.MsgDBInitFailed)
+		return i18n.NewError(ctx, coremsgs.MsgDBInitFailed)
 	}
 
-	if s.db, err = provider.Open(prefix.GetString(SQLConfDatasourceURL)); err != nil {
-		return i18n.WrapError(ctx, err, i18n.MsgDBInitFailed)
+	if s.db, err = provider.Open(config.GetString(SQLConfDatasourceURL)); err != nil {
+		return i18n.WrapError(ctx, err, coremsgs.MsgDBInitFailed)
 	}
-	connLimit := prefix.GetInt(SQLConfMaxConnections)
+	connLimit := config.GetInt(SQLConfMaxConnections)
 	if connLimit > 0 {
 		s.db.SetMaxOpenConns(connLimit)
+		s.db.SetConnMaxIdleTime(config.GetDuration(SQLConfMaxConnIdleTime))
+		maxIdleConns := config.GetInt(SQLConfMaxIdleConns)
+		if maxIdleConns <= 0 {
+			// By default we rely on the idle time, rather than a maximum number of conns to leave open
+			maxIdleConns = connLimit
+		}
+		s.db.SetMaxIdleConns(maxIdleConns)
+		s.db.SetConnMaxLifetime(config.GetDuration(SQLConfMaxConnLifetime))
+	}
+	if connLimit > 1 {
+		capabilities.Concurrency = true
 	}
 
-	if prefix.GetBool(SQLConfMigrationsAuto) {
-		if err = s.applyDBMigrations(ctx, prefix, provider); err != nil {
-			return i18n.WrapError(ctx, err, i18n.MsgDBMigrationFailed)
+	if config.GetBool(SQLConfMigrationsAuto) {
+		if err = s.applyDBMigrations(ctx, config, provider); err != nil {
+			return i18n.WrapError(ctx, err, coremsgs.MsgDBMigrationFailed)
 		}
 	}
 
@@ -93,19 +114,19 @@ func (s *SQLCommon) RunAsGroup(ctx context.Context, fn func(ctx context.Context)
 	return s.commitTx(ctx, tx, false /* we _are_ the auto-committer */)
 }
 
-func (s *SQLCommon) applyDBMigrations(ctx context.Context, prefix config.Prefix, provider Provider) error {
+func (s *SQLCommon) applyDBMigrations(ctx context.Context, config config.Section, provider Provider) error {
 	driver, err := provider.GetMigrationDriver(s.db)
 	if err == nil {
 		var m *migrate.Migrate
 		m, err = migrate.NewWithDatabaseInstance(
-			"file://"+prefix.GetString(SQLConfMigrationsDirectory),
+			"file://"+config.GetString(SQLConfMigrationsDirectory),
 			provider.MigrationsDir(), driver)
 		if err == nil {
 			err = m.Up()
 		}
 	}
 	if err != nil && err != migrate.ErrNoChange {
-		return i18n.WrapError(ctx, err, i18n.MsgDBMigrationFailed)
+		return i18n.WrapError(ctx, err, coremsgs.MsgDBMigrationFailed)
 	}
 	return nil
 }
@@ -135,7 +156,7 @@ func (s *SQLCommon) beginOrUseTx(ctx context.Context) (ctx1 context.Context, tx 
 	l.Debugf("SQL-> begin")
 	sqlTX, err := s.db.Begin()
 	if err != nil {
-		return ctx1, nil, false, i18n.WrapError(ctx1, err, i18n.MsgDBBeginFailed)
+		return ctx1, nil, false, i18n.WrapError(ctx1, err, coremsgs.MsgDBBeginFailed)
 	}
 	tx = &txWrapper{
 		sqlTX: sqlTX,
@@ -145,7 +166,7 @@ func (s *SQLCommon) beginOrUseTx(ctx context.Context) (ctx1 context.Context, tx 
 	return ctx1, tx, false, err
 }
 
-func (s *SQLCommon) queryTx(ctx context.Context, tx *txWrapper, q sq.SelectBuilder) (*sql.Rows, *txWrapper, error) {
+func (s *SQLCommon) queryTx(ctx context.Context, table string, tx *txWrapper, q sq.SelectBuilder) (*sql.Rows, *txWrapper, error) {
 	if tx == nil {
 		// If there is a transaction in the context, we should use it to provide consistency
 		// in the read operations (read after insert for example).
@@ -153,12 +174,12 @@ func (s *SQLCommon) queryTx(ctx context.Context, tx *txWrapper, q sq.SelectBuild
 	}
 
 	l := log.L(ctx)
-	sqlQuery, args, err := q.PlaceholderFormat(s.provider.PlaceholderFormat()).ToSql()
+	sqlQuery, args, err := q.PlaceholderFormat(s.features.PlaceholderFormat).ToSql()
 	if err != nil {
-		return nil, tx, i18n.WrapError(ctx, err, i18n.MsgDBQueryBuildFailed)
+		return nil, tx, i18n.WrapError(ctx, err, coremsgs.MsgDBQueryBuildFailed)
 	}
-	l.Debugf(`SQL-> query: %s`, sqlQuery)
-	l.Tracef(`SQL-> query args: %+v`, args)
+	l.Debugf(`SQL-> query %s`, table)
+	l.Tracef(`SQL-> query: %s (args: %+v)`, sqlQuery, args)
 	var rows *sql.Rows
 	if tx != nil {
 		rows, err = tx.sqlTX.QueryContext(ctx, sqlQuery, args...)
@@ -167,17 +188,17 @@ func (s *SQLCommon) queryTx(ctx context.Context, tx *txWrapper, q sq.SelectBuild
 	}
 	if err != nil {
 		l.Errorf(`SQL query failed: %s sql=[ %s ]`, err, sqlQuery)
-		return nil, tx, i18n.WrapError(ctx, err, i18n.MsgDBQueryFailed)
+		return nil, tx, i18n.WrapError(ctx, err, coremsgs.MsgDBQueryFailed)
 	}
-	l.Debugf(`SQL<- query`)
+	l.Debugf(`SQL<- query %s`, table)
 	return rows, tx, nil
 }
 
-func (s *SQLCommon) query(ctx context.Context, q sq.SelectBuilder) (*sql.Rows, *txWrapper, error) {
-	return s.queryTx(ctx, nil, q)
+func (s *SQLCommon) query(ctx context.Context, table string, q sq.SelectBuilder) (*sql.Rows, *txWrapper, error) {
+	return s.queryTx(ctx, table, nil, q)
 }
 
-func (s *SQLCommon) countQuery(ctx context.Context, tx *txWrapper, tableName string, fop sq.Sqlizer) (count int64, err error) {
+func (s *SQLCommon) countQuery(ctx context.Context, table string, tx *txWrapper, fop sq.Sqlizer, countExpr string) (count int64, err error) {
 	count = -1
 	l := log.L(ctx)
 	if tx == nil {
@@ -185,13 +206,16 @@ func (s *SQLCommon) countQuery(ctx context.Context, tx *txWrapper, tableName str
 		// in the read operations (read after insert for example).
 		tx = getTXFromContext(ctx)
 	}
-	q := sq.Select("COUNT(*)").From(tableName).Where(fop)
-	sqlQuery, args, err := q.PlaceholderFormat(s.provider.PlaceholderFormat()).ToSql()
-	if err != nil {
-		return count, i18n.WrapError(ctx, err, i18n.MsgDBQueryBuildFailed)
+	if countExpr == "" {
+		countExpr = "*"
 	}
-	l.Debugf(`SQL-> count query: %s`, sqlQuery)
-	l.Tracef(`SQL-> count query args: %+v`, args)
+	q := sq.Select(fmt.Sprintf("COUNT(%s)", countExpr)).From(table).Where(fop)
+	sqlQuery, args, err := q.PlaceholderFormat(s.features.PlaceholderFormat).ToSql()
+	if err != nil {
+		return count, i18n.WrapError(ctx, err, coremsgs.MsgDBQueryBuildFailed)
+	}
+	l.Debugf(`SQL-> count query %s`, table)
+	l.Tracef(`SQL-> count query: %s (args: %+v)`, sqlQuery, args)
 	var rows *sql.Rows
 	if tx != nil {
 		rows, err = tx.sqlTX.QueryContext(ctx, sqlQuery, args...)
@@ -200,80 +224,105 @@ func (s *SQLCommon) countQuery(ctx context.Context, tx *txWrapper, tableName str
 	}
 	if err != nil {
 		l.Errorf(`SQL count query failed: %s sql=[ %s ]`, err, sqlQuery)
-		return count, i18n.WrapError(ctx, err, i18n.MsgDBQueryFailed)
+		return count, i18n.WrapError(ctx, err, coremsgs.MsgDBQueryFailed)
 	}
 	defer rows.Close()
 	if rows.Next() {
 		if err = rows.Scan(&count); err != nil {
-			return count, i18n.WrapError(ctx, err, i18n.MsgDBReadErr, tableName)
+			return count, i18n.WrapError(ctx, err, coremsgs.MsgDBReadErr, table)
 		}
 	}
-	l.Debugf(`SQL<- count query: %d`, count)
+	l.Debugf(`SQL<- count query %s: %d`, table, count)
 	return count, nil
 }
 
-func (s *SQLCommon) queryRes(ctx context.Context, tx *txWrapper, tableName string, fop sq.Sqlizer, fi *database.FilterInfo) *database.FilterResult {
+func (s *SQLCommon) queryRes(ctx context.Context, table string, tx *txWrapper, fop sq.Sqlizer, fi *database.FilterInfo) *database.FilterResult {
 	fr := &database.FilterResult{}
-	if !fi.Count {
-		return fr
+	if fi.Count {
+		count, err := s.countQuery(ctx, table, tx, fop, fi.CountExpr)
+		if err != nil {
+			// Log, but continue
+			log.L(ctx).Warnf("Unable to return count for query: %s", err)
+		}
+		fr.TotalCount = &count // could be -1 if the count extract fails - we still return the result
 	}
-	count, err := s.countQuery(ctx, tx, tableName, fop)
-	if err != nil {
-		// Log, but continue
-		log.L(ctx).Warnf("Unable to return count for query: %s", err)
-	}
-	fr.TotalCount = &count // could be -1 if the count extract fails - we still return the result
 	return fr
 }
 
-func (s *SQLCommon) insertTx(ctx context.Context, tx *txWrapper, q sq.InsertBuilder, postCommit func()) (int64, error) {
-	l := log.L(ctx)
-	q, useQuery := s.provider.UpdateInsertForSequenceReturn(q)
+func (s *SQLCommon) insertTx(ctx context.Context, table string, tx *txWrapper, q sq.InsertBuilder, postCommit func()) (int64, error) {
+	return s.insertTxExt(ctx, table, tx, q, postCommit, false)
+}
 
-	sqlQuery, args, err := q.PlaceholderFormat(s.provider.PlaceholderFormat()).ToSql()
+func (s *SQLCommon) insertTxExt(ctx context.Context, table string, tx *txWrapper, q sq.InsertBuilder, postCommit func(), requestConflictEmptyResult bool) (int64, error) {
+	sequences := []int64{-1}
+	err := s.insertTxRows(ctx, table, tx, q, postCommit, sequences, requestConflictEmptyResult)
+	return sequences[0], err
+}
+
+func (s *SQLCommon) insertTxRows(ctx context.Context, table string, tx *txWrapper, q sq.InsertBuilder, postCommit func(), sequences []int64, requestConflictEmptyResult bool) error {
+	l := log.L(ctx)
+	q, useQuery := s.provider.ApplyInsertQueryCustomizations(q, requestConflictEmptyResult)
+
+	sqlQuery, args, err := q.PlaceholderFormat(s.features.PlaceholderFormat).ToSql()
 	if err != nil {
-		return -1, i18n.WrapError(ctx, err, i18n.MsgDBQueryBuildFailed)
+		return i18n.WrapError(ctx, err, coremsgs.MsgDBQueryBuildFailed)
 	}
-	l.Debugf(`SQL-> insert: %s`, sqlQuery)
-	l.Tracef(`SQL-> insert args: %+v`, args)
-	var sequence int64
+	l.Debugf(`SQL-> insert %s`, table)
+	l.Tracef(`SQL-> insert query: %s (args: %+v)`, sqlQuery, args)
 	if useQuery {
-		err := tx.sqlTX.QueryRowContext(ctx, sqlQuery, args...).Scan(&sequence)
+		result, err := tx.sqlTX.QueryContext(ctx, sqlQuery, args...)
+		for i := 0; i < len(sequences) && err == nil; i++ {
+			if result.Next() {
+				err = result.Scan(&sequences[i])
+			} else {
+				err = i18n.NewError(ctx, coremsgs.MsgDBNoSequence, i+1)
+			}
+		}
+		if result != nil {
+			result.Close()
+		}
 		if err != nil {
-			l.Errorf(`SQL insert failed: %s sql=[ %s ]: %s`, err, sqlQuery, err)
-			return -1, i18n.WrapError(ctx, err, i18n.MsgDBInsertFailed)
+			level := logrus.DebugLevel
+			if !requestConflictEmptyResult {
+				level = logrus.ErrorLevel
+			}
+			l.Logf(level, `SQL insert failed (conflictEmptyRequested=%t): %s sql=[ %s ]: %s`, requestConflictEmptyResult, err, sqlQuery, err)
+			return i18n.WrapError(ctx, err, coremsgs.MsgDBInsertFailed)
 		}
 	} else {
+		if len(sequences) > 1 {
+			return i18n.WrapError(ctx, err, coremsgs.MsgDBMultiRowConfigError)
+		}
 		res, err := tx.sqlTX.ExecContext(ctx, sqlQuery, args...)
 		if err != nil {
 			l.Errorf(`SQL insert failed: %s sql=[ %s ]: %s`, err, sqlQuery, err)
-			return -1, i18n.WrapError(ctx, err, i18n.MsgDBInsertFailed)
+			return i18n.WrapError(ctx, err, coremsgs.MsgDBInsertFailed)
 		}
-		sequence, _ = res.LastInsertId()
+		sequences[0], _ = res.LastInsertId()
 	}
-	l.Debugf(`SQL<- inserted sequence=%d`, sequence)
+	l.Debugf(`SQL<- insert %s sequences=%v`, table, sequences)
 
 	if postCommit != nil {
 		s.postCommitEvent(tx, postCommit)
 	}
-	return sequence, nil
+	return nil
 }
 
-func (s *SQLCommon) deleteTx(ctx context.Context, tx *txWrapper, q sq.DeleteBuilder, postCommit func()) error {
+func (s *SQLCommon) deleteTx(ctx context.Context, table string, tx *txWrapper, q sq.DeleteBuilder, postCommit func()) error {
 	l := log.L(ctx)
-	sqlQuery, args, err := q.PlaceholderFormat(s.provider.PlaceholderFormat()).ToSql()
+	sqlQuery, args, err := q.PlaceholderFormat(s.features.PlaceholderFormat).ToSql()
 	if err != nil {
-		return i18n.WrapError(ctx, err, i18n.MsgDBQueryBuildFailed)
+		return i18n.WrapError(ctx, err, coremsgs.MsgDBQueryBuildFailed)
 	}
-	l.Debugf(`SQL-> delete: %s`, sqlQuery)
-	l.Tracef(`SQL-> delete args: %+v`, args)
+	l.Debugf(`SQL-> delete %s`, table)
+	l.Tracef(`SQL-> delete query: %s args: %+v`, sqlQuery, args)
 	res, err := tx.sqlTX.ExecContext(ctx, sqlQuery, args...)
 	if err != nil {
 		l.Errorf(`SQL delete failed: %s sql=[ %s ]: %s`, err, sqlQuery, err)
-		return i18n.WrapError(ctx, err, i18n.MsgDBDeleteFailed)
+		return i18n.WrapError(ctx, err, coremsgs.MsgDBDeleteFailed)
 	}
 	ra, _ := res.RowsAffected()
-	l.Debugf(`SQL<- delete affected=%d`, ra)
+	l.Debugf(`SQL<- delete %s affected=%d`, table, ra)
 	if ra < 1 {
 		return database.DeleteRecordNotFound
 	}
@@ -284,30 +333,60 @@ func (s *SQLCommon) deleteTx(ctx context.Context, tx *txWrapper, q sq.DeleteBuil
 	return nil
 }
 
-func (s *SQLCommon) updateTx(ctx context.Context, tx *txWrapper, q sq.UpdateBuilder, postCommit func()) error {
+func (s *SQLCommon) updateTx(ctx context.Context, table string, tx *txWrapper, q sq.UpdateBuilder, postCommit func()) (int64, error) {
 	l := log.L(ctx)
-	sqlQuery, args, err := q.PlaceholderFormat(s.provider.PlaceholderFormat()).ToSql()
+	sqlQuery, args, err := q.PlaceholderFormat(s.features.PlaceholderFormat).ToSql()
 	if err != nil {
-		return i18n.WrapError(ctx, err, i18n.MsgDBQueryBuildFailed)
+		return -1, i18n.WrapError(ctx, err, coremsgs.MsgDBQueryBuildFailed)
 	}
-	l.Debugf(`SQL-> update: %s`, sqlQuery)
-	l.Tracef(`SQL-> update args: %+v`, args)
+	l.Debugf(`SQL-> update %s`, table)
+	l.Tracef(`SQL-> update query: %s (args: %+v)`, sqlQuery, args)
 	res, err := tx.sqlTX.ExecContext(ctx, sqlQuery, args...)
 	if err != nil {
 		l.Errorf(`SQL update failed: %s sql=[ %s ]`, err, sqlQuery)
-		return i18n.WrapError(ctx, err, i18n.MsgDBUpdateFailed)
+		return -1, i18n.WrapError(ctx, err, coremsgs.MsgDBUpdateFailed)
 	}
-	ra, _ := res.RowsAffected() // currently only used for debugging
-	l.Debugf(`SQL<- update affected=%d`, ra)
+	ra, _ := res.RowsAffected()
+	l.Debugf(`SQL<- update %s affected=%d`, table, ra)
 
 	if postCommit != nil {
 		s.postCommitEvent(tx, postCommit)
 	}
-	return nil
+	return ra, nil
 }
 
 func (s *SQLCommon) postCommitEvent(tx *txWrapper, fn func()) {
 	tx.postCommit = append(tx.postCommit, fn)
+}
+
+func (s *SQLCommon) addPreCommitEvent(tx *txWrapper, event *core.Event) {
+	tx.preCommitEvents = append(tx.preCommitEvents, event)
+}
+
+func (tx *txWrapper) tableIsLocked(table string) bool {
+	for _, t := range tx.tableLocks {
+		if t == table {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *SQLCommon) lockTableExclusiveTx(ctx context.Context, table string, tx *txWrapper) error {
+	l := log.L(ctx)
+	if s.features.ExclusiveTableLockSQL != nil && !tx.tableIsLocked(table) {
+		sqlQuery := s.features.ExclusiveTableLockSQL(table)
+
+		l.Debugf(`SQL-> lock %s`, table)
+		_, err := tx.sqlTX.ExecContext(ctx, sqlQuery)
+		if err != nil {
+			l.Errorf(`SQL lock failed: %s sql=[ %s ]`, err, sqlQuery)
+			return i18n.WrapError(ctx, err, coremsgs.MsgDBLockFailed)
+		}
+		tx.tableLocks = append(tx.tableLocks, table)
+		l.Debugf(`SQL<- lock %s`, table)
+	}
+	return nil
 }
 
 // rollbackTx be safely called as a defer, as it is a cheap no-op if the transaction is complete
@@ -331,13 +410,23 @@ func (s *SQLCommon) commitTx(ctx context.Context, tx *txWrapper, autoCommit bool
 		// We're inside of a wide transaction boundary with an auto-commit
 		return nil
 	}
-
 	l := log.L(ctx)
+
+	// Only at this stage do we write to the special events Database table, so we know
+	// regardless of the higher level logic, the events are always written at this point
+	// at the end of the transaction
+	if len(tx.preCommitEvents) > 0 {
+		if err := s.insertEventsPreCommit(ctx, tx, tx.preCommitEvents); err != nil {
+			s.rollbackTx(ctx, tx, false)
+			return err
+		}
+	}
+
 	l.Debugf(`SQL-> commit`)
 	err := tx.sqlTX.Commit()
 	if err != nil {
 		l.Errorf(`SQL commit failed: %s`, err)
-		return i18n.WrapError(ctx, err, i18n.MsgDBCommitFailed)
+		return i18n.WrapError(ctx, err, coremsgs.MsgDBCommitFailed)
 	}
 	l.Debugf(`SQL<- commit`)
 

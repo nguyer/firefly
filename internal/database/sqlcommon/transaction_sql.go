@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -21,10 +21,12 @@ import (
 	"database/sql"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 var (
@@ -32,124 +34,65 @@ var (
 		"id",
 		"ttype",
 		"namespace",
-		"ref",
-		"signer",
-		"hash",
 		"created",
-		"protocol_id",
-		"status",
-		"info",
+		"blockchain_ids",
 	}
 	transactionFilterFieldMap = map[string]string{
-		"type":       "ttype",
-		"protocolid": "protocol_id",
-		"reference":  "ref",
+		"type":          "ttype",
+		"blockchainids": "blockchain_ids",
 	}
 )
 
-func (s *SQLCommon) UpsertTransaction(ctx context.Context, transaction *fftypes.Transaction, allowHashUpdate bool) (err error) {
+const transactionsTable = "transactions"
+
+func (s *SQLCommon) InsertTransaction(ctx context.Context, transaction *core.Transaction) (err error) {
 	ctx, tx, autoCommit, err := s.beginOrUseTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	// Do a select within the transaction to detemine if the UUID already exists
-	transactionRows, _, err := s.queryTx(ctx, tx,
-		sq.Select("hash").
-			From("transactions").
-			Where(sq.Eq{"id": transaction.ID}),
-	)
-	if err != nil {
+	transaction.Created = fftypes.Now()
+	if _, err = s.insertTx(ctx, transactionsTable, tx,
+		sq.Insert(transactionsTable).
+			Columns(transactionColumns...).
+			Values(
+				transaction.ID,
+				string(transaction.Type),
+				transaction.Namespace,
+				transaction.Created,
+				transaction.BlockchainIDs,
+			),
+		func() {
+			s.callbacks.UUIDCollectionNSEvent(database.CollectionTransactions, core.ChangeEventTypeCreated, transaction.Namespace, transaction.ID)
+		},
+	); err != nil {
 		return err
-	}
-	existing := transactionRows.Next()
-
-	if existing && !allowHashUpdate {
-		var hash *fftypes.Bytes32
-		_ = transactionRows.Scan(&hash)
-		if !fftypes.SafeHashCompare(hash, transaction.Hash) {
-			transactionRows.Close()
-			log.L(ctx).Errorf("Existing=%s New=%s", hash, transaction.Hash)
-			return database.HashMismatch
-		}
-	}
-	transactionRows.Close()
-
-	if existing {
-
-		// Update the transaction
-		if err = s.updateTx(ctx, tx,
-			sq.Update("transactions").
-				Set("ttype", string(transaction.Subject.Type)).
-				Set("namespace", transaction.Subject.Namespace).
-				Set("ref", transaction.Subject.Reference).
-				Set("signer", transaction.Subject.Signer).
-				Set("hash", transaction.Hash).
-				Set("created", transaction.Created).
-				Set("protocol_id", transaction.ProtocolID).
-				Set("status", transaction.Status).
-				Set("info", transaction.Info).
-				Where(sq.Eq{"id": transaction.ID}),
-			func() {
-				s.callbacks.UUIDCollectionNSEvent(database.CollectionTransactions, fftypes.ChangeEventTypeUpdated, transaction.Subject.Namespace, transaction.ID)
-			},
-		); err != nil {
-			return err
-		}
-	} else {
-
-		if _, err = s.insertTx(ctx, tx,
-			sq.Insert("transactions").
-				Columns(transactionColumns...).
-				Values(
-					transaction.ID,
-					string(transaction.Subject.Type),
-					transaction.Subject.Namespace,
-					transaction.Subject.Reference,
-					transaction.Subject.Signer,
-					transaction.Hash,
-					transaction.Created,
-					transaction.ProtocolID,
-					transaction.Status,
-					transaction.Info,
-				),
-			func() {
-				s.callbacks.UUIDCollectionNSEvent(database.CollectionTransactions, fftypes.ChangeEventTypeCreated, transaction.Subject.Namespace, transaction.ID)
-			},
-		); err != nil {
-			return err
-		}
 	}
 
 	return s.commitTx(ctx, tx, autoCommit)
 }
 
-func (s *SQLCommon) transactionResult(ctx context.Context, row *sql.Rows) (*fftypes.Transaction, error) {
-	var transaction fftypes.Transaction
+func (s *SQLCommon) transactionResult(ctx context.Context, row *sql.Rows) (*core.Transaction, error) {
+	var transaction core.Transaction
 	err := row.Scan(
 		&transaction.ID,
-		&transaction.Subject.Type,
-		&transaction.Subject.Namespace,
-		&transaction.Subject.Reference,
-		&transaction.Subject.Signer,
-		&transaction.Hash,
+		&transaction.Type,
+		&transaction.Namespace,
 		&transaction.Created,
-		&transaction.ProtocolID,
-		&transaction.Status,
-		&transaction.Info,
+		&transaction.BlockchainIDs,
 	)
 	if err != nil {
-		return nil, i18n.WrapError(ctx, err, i18n.MsgDBReadErr, "transactions")
+		return nil, i18n.WrapError(ctx, err, coremsgs.MsgDBReadErr, transactionsTable)
 	}
 	return &transaction, nil
 }
 
-func (s *SQLCommon) GetTransactionByID(ctx context.Context, id *fftypes.UUID) (message *fftypes.Transaction, err error) {
+func (s *SQLCommon) GetTransactionByID(ctx context.Context, id *fftypes.UUID) (message *core.Transaction, err error) {
 
-	rows, _, err := s.query(ctx,
+	rows, _, err := s.query(ctx, transactionsTable,
 		sq.Select(transactionColumns...).
-			From("transactions").
+			From(transactionsTable).
 			Where(sq.Eq{"id": id}),
 	)
 	if err != nil {
@@ -170,20 +113,20 @@ func (s *SQLCommon) GetTransactionByID(ctx context.Context, id *fftypes.UUID) (m
 	return transaction, nil
 }
 
-func (s *SQLCommon) GetTransactions(ctx context.Context, filter database.Filter) (message []*fftypes.Transaction, fr *database.FilterResult, err error) {
+func (s *SQLCommon) GetTransactions(ctx context.Context, filter database.Filter) (message []*core.Transaction, fr *database.FilterResult, err error) {
 
-	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(transactionColumns...).From("transactions"), filter, transactionFilterFieldMap, []string{"sequence"})
+	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(transactionColumns...).From(transactionsTable), filter, transactionFilterFieldMap, []interface{}{"sequence"})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, tx, err := s.query(ctx, query)
+	rows, tx, err := s.query(ctx, transactionsTable, query)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 
-	transactions := []*fftypes.Transaction{}
+	transactions := []*core.Transaction{}
 	for rows.Next() {
 		transaction, err := s.transactionResult(ctx, rows)
 		if err != nil {
@@ -192,7 +135,7 @@ func (s *SQLCommon) GetTransactions(ctx context.Context, filter database.Filter)
 		transactions = append(transactions, transaction)
 	}
 
-	return transactions, s.queryRes(ctx, tx, "transactions", fop, fi), err
+	return transactions, s.queryRes(ctx, transactionsTable, tx, fop, fi), err
 
 }
 
@@ -204,13 +147,13 @@ func (s *SQLCommon) UpdateTransaction(ctx context.Context, id *fftypes.UUID, upd
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	query, err := s.buildUpdate(sq.Update("transactions"), update, transactionFilterFieldMap)
+	query, err := s.buildUpdate(sq.Update(transactionsTable), update, transactionFilterFieldMap)
 	if err != nil {
 		return err
 	}
 	query = query.Where(sq.Eq{"id": id})
 
-	err = s.updateTx(ctx, tx, query, nil /* no change evnents for filter based updates */)
+	_, err = s.updateTx(ctx, transactionsTable, tx, query, nil /* no change evnents for filter based updates */)
 	if err != nil {
 		return err
 	}

@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -17,49 +17,77 @@
 package orchestrator
 
 import (
-	"github.com/hyperledger/firefly/internal/assets"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
 	"github.com/hyperledger/firefly/internal/events"
+	"github.com/hyperledger/firefly/internal/operations"
 	"github.com/hyperledger/firefly/pkg/blockchain"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/dataexchange"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/sharedstorage"
 	"github.com/hyperledger/firefly/pkg/tokens"
 )
 
 type boundCallbacks struct {
 	bi blockchain.Plugin
 	dx dataexchange.Plugin
+	ss sharedstorage.Plugin
 	ei events.EventManager
-	am assets.Manager
+	om operations.Manager
 }
 
-func (bc *boundCallbacks) BlockchainOpUpdate(operationID *fftypes.UUID, txState blockchain.TransactionStatus, errorMessage string, opOutput fftypes.JSONObject) error {
-	return bc.ei.OperationUpdate(bc.bi, operationID, txState, errorMessage, opOutput)
+func (bc *boundCallbacks) BlockchainOpUpdate(plugin blockchain.Plugin, operationID *fftypes.UUID, txState blockchain.TransactionStatus, blockchainTXID, errorMessage string, opOutput fftypes.JSONObject) {
+	bc.om.SubmitOperationUpdate(plugin, &operations.OperationUpdate{
+		ID:             operationID,
+		Status:         txState,
+		BlockchainTXID: blockchainTXID,
+		ErrorMessage:   errorMessage,
+		Output:         opOutput,
+	})
 }
 
-func (bc *boundCallbacks) TokensOpUpdate(plugin tokens.Plugin, operationID *fftypes.UUID, txState fftypes.OpStatus, errorMessage string, opOutput fftypes.JSONObject) error {
-	return bc.ei.OperationUpdate(plugin, operationID, txState, errorMessage, opOutput)
+func (bc *boundCallbacks) TokenOpUpdate(plugin tokens.Plugin, operationID *fftypes.UUID, txState core.OpStatus, blockchainTXID, errorMessage string, opOutput fftypes.JSONObject) {
+	bc.om.SubmitOperationUpdate(plugin, &operations.OperationUpdate{
+		ID:             operationID,
+		Status:         txState,
+		BlockchainTXID: blockchainTXID,
+		ErrorMessage:   errorMessage,
+		Output:         opOutput,
+	})
 }
 
-func (bc *boundCallbacks) BatchPinComplete(batch *blockchain.BatchPin, author string, protocolTxID string, additionalInfo fftypes.JSONObject) error {
-	return bc.ei.BatchPinComplete(bc.bi, batch, author, protocolTxID, additionalInfo)
+func (bc *boundCallbacks) BatchPinComplete(batch *blockchain.BatchPin, signingKey *core.VerifierRef) error {
+	return bc.ei.BatchPinComplete(bc.bi, batch, signingKey)
 }
 
-func (bc *boundCallbacks) TransferResult(trackingID string, status fftypes.OpStatus, info string, opOutput fftypes.JSONObject) error {
-	return bc.ei.TransferResult(bc.dx, trackingID, status, info, opOutput)
+func (bc *boundCallbacks) DXEvent(event dataexchange.DXEvent) {
+	switch event.Type() {
+	case dataexchange.DXEventTypeTransferResult:
+		bc.om.TransferResult(bc.dx, event)
+	default:
+		bc.ei.DXEvent(bc.dx, event)
+	}
 }
 
-func (bc *boundCallbacks) BLOBReceived(peerID string, hash fftypes.Bytes32, payloadRef string) error {
-	return bc.ei.BLOBReceived(bc.dx, peerID, hash, payloadRef)
+func (bc *boundCallbacks) TokenPoolCreated(plugin tokens.Plugin, pool *tokens.TokenPool) error {
+	return bc.ei.TokenPoolCreated(plugin, pool)
 }
 
-func (bc *boundCallbacks) MessageReceived(peerID string, data []byte) error {
-	return bc.ei.MessageReceived(bc.dx, peerID, data)
+func (bc *boundCallbacks) TokensTransferred(plugin tokens.Plugin, transfer *tokens.TokenTransfer) error {
+	return bc.ei.TokensTransferred(plugin, transfer)
 }
 
-func (bc *boundCallbacks) TokenPoolCreated(plugin tokens.Plugin, pool *fftypes.TokenPool, protocolTxID string, additionalInfo fftypes.JSONObject) error {
-	return bc.am.TokenPoolCreated(plugin, pool, protocolTxID, additionalInfo)
+func (bc *boundCallbacks) BlockchainEvent(event *blockchain.EventWithSubscription) error {
+	return bc.ei.BlockchainEvent(event)
 }
 
-func (bc *boundCallbacks) TokensTransferred(plugin tokens.Plugin, transfer *fftypes.TokenTransfer, protocolTxID string, additionalInfo fftypes.JSONObject) error {
-	return bc.ei.TokensTransferred(plugin, transfer, protocolTxID, additionalInfo)
+func (bc *boundCallbacks) TokensApproved(plugin tokens.Plugin, approval *tokens.TokenApproval) error {
+	return bc.ei.TokensApproved(plugin, approval)
+}
+
+func (bc *boundCallbacks) SharedStorageBatchDownloaded(ns, payloadRef string, data []byte) (*fftypes.UUID, error) {
+	return bc.ei.SharedStorageBatchDownloaded(bc.ss, ns, payloadRef, data)
+}
+
+func (bc *boundCallbacks) SharedStorageBlobDownloaded(hash fftypes.Bytes32, size int64, payloadRef string) {
+	bc.ei.SharedStorageBlobDownloaded(bc.ss, hash, size, payloadRef)
 }

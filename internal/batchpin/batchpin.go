@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,70 +19,71 @@ package batchpin
 import (
 	"context"
 
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/identity"
+	"github.com/hyperledger/firefly/internal/metrics"
+	"github.com/hyperledger/firefly/internal/operations"
 	"github.com/hyperledger/firefly/pkg/blockchain"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 type Submitter interface {
-	SubmitPinnedBatch(ctx context.Context, batch *fftypes.Batch, contexts []*fftypes.Bytes32) error
+	core.Named
+
+	SubmitPinnedBatch(ctx context.Context, batch *core.BatchPersisted, contexts []*fftypes.Bytes32, payloadRef string) error
+
+	// From operations.OperationHandler
+	PrepareOperation(ctx context.Context, op *core.Operation) (*core.PreparedOperation, error)
+	RunOperation(ctx context.Context, op *core.PreparedOperation) (outputs fftypes.JSONObject, complete bool, err error)
 }
 
 type batchPinSubmitter struct {
 	database   database.Plugin
 	identity   identity.Manager
 	blockchain blockchain.Plugin
+	metrics    metrics.Manager
+	operations operations.Manager
 }
 
-func NewBatchPinSubmitter(di database.Plugin, im identity.Manager, bi blockchain.Plugin) Submitter {
-	return &batchPinSubmitter{
+func NewBatchPinSubmitter(ctx context.Context, di database.Plugin, im identity.Manager, bi blockchain.Plugin, mm metrics.Manager, om operations.Manager) (Submitter, error) {
+	if di == nil || im == nil || bi == nil || mm == nil || om == nil {
+		return nil, i18n.NewError(ctx, coremsgs.MsgInitializationNilDepError, "BatchPinSubmitter")
+	}
+	bp := &batchPinSubmitter{
 		database:   di,
 		identity:   im,
 		blockchain: bi,
+		metrics:    mm,
+		operations: om,
 	}
+	om.RegisterHandler(ctx, bp, []core.OpType{
+		core.OpTypeBlockchainPinBatch,
+	})
+	return bp, nil
 }
 
-func (bp *batchPinSubmitter) SubmitPinnedBatch(ctx context.Context, batch *fftypes.Batch, contexts []*fftypes.Bytes32) error {
+func (bp *batchPinSubmitter) Name() string {
+	return "BatchPinSubmitter"
+}
 
-	tx := &fftypes.Transaction{
-		ID: batch.Payload.TX.ID,
-		Subject: fftypes.TransactionSubject{
-			Type:      fftypes.TransactionTypeBatchPin,
-			Namespace: batch.Namespace,
-			Signer:    batch.Key, // The transaction records on the on-chain identity
-			Reference: batch.ID,
-		},
-		Created: fftypes.Now(),
-		Status:  fftypes.OpStatusPending,
-	}
-	tx.Hash = tx.Subject.Hash()
-	err := bp.database.UpsertTransaction(ctx, tx, false /* should be new, or idempotent replay */)
-	if err != nil {
-		return err
-	}
-
+func (bp *batchPinSubmitter) SubmitPinnedBatch(ctx context.Context, batch *core.BatchPersisted, contexts []*fftypes.Bytes32, payloadRef string) error {
 	// The pending blockchain transaction
-	op := fftypes.NewTXOperation(
+	op := core.NewOperation(
 		bp.blockchain,
 		batch.Namespace,
-		batch.Payload.TX.ID,
-		"",
-		fftypes.OpTypeBlockchainBatchPin,
-		fftypes.OpStatusPending,
-		"")
-	err = bp.database.UpsertOperation(ctx, op, false)
-	if err != nil {
+		batch.TX.ID,
+		core.OpTypeBlockchainPinBatch)
+	addBatchPinInputs(op, batch.ID, contexts, payloadRef)
+	if err := bp.operations.AddOrReuseOperation(ctx, op); err != nil {
 		return err
 	}
 
-	// Write the batch pin to the blockchain
-	return bp.blockchain.SubmitBatchPin(ctx, op.ID, nil /* TODO: ledger selection */, batch.Key, &blockchain.BatchPin{
-		Namespace:      batch.Namespace,
-		TransactionID:  batch.Payload.TX.ID,
-		BatchID:        batch.ID,
-		BatchHash:      batch.Hash,
-		BatchPaylodRef: batch.PayloadRef,
-		Contexts:       contexts,
-	})
+	if bp.metrics.IsMetricsEnabled() {
+		bp.metrics.CountBatchPin()
+	}
+	_, err := bp.operations.RunOperation(ctx, opBatchPin(op, batch, contexts, payloadRef))
+	return err
 }

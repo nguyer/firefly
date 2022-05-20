@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -18,19 +18,23 @@ package events
 
 import (
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"sync"
 
-	"github.com/hyperledger/firefly/internal/config"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly-common/pkg/retry"
+	"github.com/hyperledger/firefly/internal/broadcast"
+	"github.com/hyperledger/firefly/internal/coreconfig"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/data"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
-	"github.com/hyperledger/firefly/internal/retry"
-	"github.com/hyperledger/firefly/internal/syshandlers"
+	"github.com/hyperledger/firefly/internal/privatemessaging"
+	"github.com/hyperledger/firefly/internal/txcommon"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
 	"github.com/hyperledger/firefly/pkg/events"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 const (
@@ -52,22 +56,22 @@ type eventDispatcher struct {
 	data          data.Manager
 	database      database.Plugin
 	transport     events.Plugin
-	syshandlers   syshandlers.SystemHandlers
+	broadcast     broadcast.Manager
+	messaging     privatemessaging.Manager
 	elected       bool
 	eventPoller   *eventPoller
-	inflight      map[fftypes.UUID]*fftypes.Event
-	eventDelivery chan *fftypes.EventDelivery
+	inflight      map[fftypes.UUID]*core.Event
+	eventDelivery chan *core.EventDelivery
 	mux           sync.Mutex
 	namespace     string
 	readAhead     int
 	subscription  *subscription
-	cel           *changeEventListener
-	changeEvents  chan *fftypes.ChangeEvent
+	txHelper      txcommon.Helper
 }
 
-func newEventDispatcher(ctx context.Context, ei events.Plugin, di database.Plugin, dm data.Manager, sh syshandlers.SystemHandlers, connID string, sub *subscription, en *eventNotifier, cel *changeEventListener) *eventDispatcher {
+func newEventDispatcher(ctx context.Context, ei events.Plugin, di database.Plugin, dm data.Manager, bm broadcast.Manager, pm privatemessaging.Manager, connID string, sub *subscription, en *eventNotifier, txHelper txcommon.Helper) *eventDispatcher {
 	ctx, cancelCtx := context.WithCancel(ctx)
-	readAhead := config.GetUint(config.SubscriptionDefaultsReadAhead)
+	readAhead := config.GetUint(coreconfig.SubscriptionDefaultsReadAhead)
 	if sub.definition.Options.ReadAhead != nil {
 		readAhead = uint(*sub.definition.Options.ReadAhead)
 	}
@@ -80,33 +84,33 @@ func newEventDispatcher(ctx context.Context, ei events.Plugin, di database.Plugi
 			"sub", fmt.Sprintf("%s/%s:%s", sub.definition.ID, sub.definition.Namespace, sub.definition.Name)),
 		database:      di,
 		transport:     ei,
-		syshandlers:   sh,
+		broadcast:     bm,
+		messaging:     pm,
 		data:          dm,
 		connID:        connID,
 		cancelCtx:     cancelCtx,
 		subscription:  sub,
 		namespace:     sub.definition.Namespace,
-		inflight:      make(map[fftypes.UUID]*fftypes.Event),
-		eventDelivery: make(chan *fftypes.EventDelivery, readAhead+1),
-		changeEvents:  make(chan *fftypes.ChangeEvent),
+		inflight:      make(map[fftypes.UUID]*core.Event),
+		eventDelivery: make(chan *core.EventDelivery, readAhead+1),
 		readAhead:     int(readAhead),
 		acksNacks:     make(chan ackNack),
 		closed:        make(chan struct{}),
-		cel:           cel,
+		txHelper:      txHelper,
 	}
 
 	pollerConf := &eventPollerConf{
-		eventBatchSize:             config.GetInt(config.EventDispatcherBufferLength),
-		eventBatchTimeout:          config.GetDuration(config.EventDispatcherBatchTimeout),
-		eventPollTimeout:           config.GetDuration(config.EventDispatcherPollTimeout),
+		eventBatchSize:             config.GetInt(coreconfig.EventDispatcherBufferLength),
+		eventBatchTimeout:          config.GetDuration(coreconfig.EventDispatcherBatchTimeout),
+		eventPollTimeout:           config.GetDuration(coreconfig.EventDispatcherPollTimeout),
 		startupOffsetRetryAttempts: 0, // We need to keep trying to start indefinitely
 		retry: retry.Retry{
-			InitialDelay: config.GetDuration(config.EventDispatcherRetryInitDelay),
-			MaximumDelay: config.GetDuration(config.EventDispatcherRetryMaxDelay),
-			Factor:       config.GetFloat64(config.EventDispatcherRetryFactor),
+			InitialDelay: config.GetDuration(coreconfig.EventDispatcherRetryInitDelay),
+			MaximumDelay: config.GetDuration(coreconfig.EventDispatcherRetryMaxDelay),
+			Factor:       config.GetFloat64(coreconfig.EventDispatcherRetryFactor),
 		},
 		namespace:  sub.definition.Namespace,
-		offsetType: fftypes.OffsetTypeSubscription,
+		offsetType: core.OffsetTypeSubscription,
 		offsetName: sub.definition.ID.String(),
 		addCriteria: func(af database.AndFilter) database.AndFilter {
 			return af.Condition(af.Builder().Eq("namespace", sub.definition.Namespace))
@@ -149,101 +153,111 @@ func (ed *eventDispatcher) electAndStart() {
 	<-ed.eventPoller.closed
 }
 
-func (ed *eventDispatcher) getEvents(ctx context.Context, filter database.Filter) ([]fftypes.LocallySequenced, error) {
+func (ed *eventDispatcher) getEvents(ctx context.Context, filter database.Filter, offset int64) ([]core.LocallySequenced, error) {
+	log.L(ctx).Tracef("Reading page of events > %d (first events would be %d)", offset, offset+1)
 	events, _, err := ed.database.GetEvents(ctx, filter)
-	ls := make([]fftypes.LocallySequenced, len(events))
+	ls := make([]core.LocallySequenced, len(events))
 	for i, e := range events {
 		ls[i] = e
 	}
 	return ls, err
 }
 
-func (ed *eventDispatcher) enrichEvents(events []fftypes.LocallySequenced) ([]*fftypes.EventDelivery, error) {
-	// We need all the messages that match event references
-	refIDs := make([]driver.Value, len(events))
+func (ed *eventDispatcher) enrichEvents(events []core.LocallySequenced) ([]*core.EventDelivery, error) {
+	enriched := make([]*core.EventDelivery, len(events))
 	for i, ls := range events {
-		e := ls.(*fftypes.Event)
-		if e.Reference != nil {
-			refIDs[i] = *e.Reference
+		e := ls.(*core.Event)
+		enrichedEvent, err := ed.txHelper.EnrichEvent(ed.ctx, e)
+		if err != nil {
+			return nil, err
+		}
+		enriched[i] = &core.EventDelivery{
+			EnrichedEvent: *enrichedEvent,
+			Subscription:  ed.subscription.definition.SubscriptionRef,
 		}
 	}
-
-	mfb := database.MessageQueryFactory.NewFilter(ed.ctx)
-	msgFilter := mfb.And(
-		mfb.In("id", refIDs),
-		mfb.Eq("namespace", ed.namespace),
-	)
-	msgs, _, err := ed.database.GetMessages(ed.ctx, msgFilter)
-	if err != nil {
-		return nil, err
-	}
-
-	enriched := make([]*fftypes.EventDelivery, len(events))
-	for i, ls := range events {
-		e := ls.(*fftypes.Event)
-		enriched[i] = &fftypes.EventDelivery{
-			Event:        *e,
-			Subscription: ed.subscription.definition.SubscriptionRef,
-		}
-		for _, msg := range msgs {
-			if *e.Reference == *msg.Header.ID {
-				enriched[i].Message = msg
-				break
-			}
-		}
-	}
-
 	return enriched, nil
-
 }
 
-func (ed *eventDispatcher) filterEvents(candidates []*fftypes.EventDelivery) []*fftypes.EventDelivery {
-	matchingEvents := make([]*fftypes.EventDelivery, 0, len(candidates))
+func (ed *eventDispatcher) filterEvents(candidates []*core.EventDelivery) []*core.EventDelivery {
+	matchingEvents := make([]*core.EventDelivery, 0, len(candidates))
 	for _, event := range candidates {
 		filter := ed.subscription
 		if filter.eventMatcher != nil && !filter.eventMatcher.MatchString(string(event.Type)) {
 			continue
 		}
+
 		msg := event.Message
+		tx := event.Transaction
+		be := event.BlockchainEvent
 		tag := ""
+		topic := event.Topic
 		group := ""
 		author := ""
-		var topics []string
+		txType := ""
+		beName := ""
+		beListener := ""
+
 		if msg != nil {
 			tag = msg.Header.Tag
-			topics = msg.Header.Topics
 			author = msg.Header.Author
 			if msg.Header.Group != nil {
 				group = msg.Header.Group.String()
 			}
 		}
-		if filter.tagFilter != nil && !filter.tagFilter.MatchString(tag) {
-			continue
+
+		if tx != nil {
+			txType = tx.Type.String()
 		}
-		if filter.authorFilter != nil && !filter.authorFilter.MatchString(author) {
-			continue
+
+		if be != nil {
+			beName = be.Name
+			beListener = be.Listener.String()
 		}
-		if filter.topicsFilter != nil {
+
+		if filter.topicFilter != nil {
 			topicsMatch := false
-			for _, topic := range topics {
-				if filter.topicsFilter.MatchString(topic) {
-					topicsMatch = true
-					break
-				}
+			if filter.topicFilter.MatchString(topic) {
+				topicsMatch = true
 			}
 			if !topicsMatch {
 				continue
 			}
 		}
-		if filter.groupFilter != nil && !filter.groupFilter.MatchString(group) {
-			continue
+
+		if filter.messageFilter != nil {
+			if filter.messageFilter.tagFilter != nil && !filter.messageFilter.tagFilter.MatchString(tag) {
+				continue
+			}
+			if filter.messageFilter.authorFilter != nil && !filter.messageFilter.authorFilter.MatchString(author) {
+				continue
+			}
+			if filter.messageFilter.groupFilter != nil && !filter.messageFilter.groupFilter.MatchString(group) {
+				continue
+			}
 		}
+
+		if filter.transactionFilter != nil {
+			if filter.transactionFilter.typeFilter != nil && !filter.transactionFilter.typeFilter.MatchString(txType) {
+				continue
+			}
+		}
+
+		if filter.blockchainFilter != nil {
+			if filter.blockchainFilter.nameFilter != nil && !filter.blockchainFilter.nameFilter.MatchString(beName) {
+				continue
+			}
+			if filter.blockchainFilter.listenerFilter != nil && !filter.blockchainFilter.listenerFilter.MatchString(beListener) {
+				continue
+			}
+		}
+
 		matchingEvents = append(matchingEvents, event)
 	}
 	return matchingEvents
 }
 
-func (ed *eventDispatcher) bufferedDelivery(events []fftypes.LocallySequenced) (bool, error) {
+func (ed *eventDispatcher) bufferedDelivery(events []core.LocallySequenced) (bool, error) {
 	// At this point, the page of messages we've been given are loaded from the DB into memory,
 	// but we can only make them in-flight and push them to the client up to the maximum
 	// readahead (which is likely lower than our page size - 1 by default)
@@ -269,7 +283,7 @@ func (ed *eventDispatcher) bufferedDelivery(events []fftypes.LocallySequenced) (
 	// or a reset event happens
 	for {
 		ed.mux.Lock()
-		var disapatchable []*fftypes.EventDelivery
+		var disapatchable []*core.EventDelivery
 		inflightCount := len(ed.inflight)
 		maxDispatch := 1 + ed.readAhead - inflightCount
 		if maxDispatch >= len(matching) {
@@ -302,25 +316,19 @@ func (ed *eventDispatcher) bufferedDelivery(events []fftypes.LocallySequenced) (
 		// Block until we're closed, or woken due to a delivery response
 		select {
 		case <-ed.ctx.Done():
-			return false, i18n.NewError(ed.ctx, i18n.MsgDispatcherClosing)
+			return false, i18n.NewError(ed.ctx, coremsgs.MsgDispatcherClosing)
 		case an := <-ed.acksNacks:
 			if an.isNack {
 				nacks++
 				ed.handleNackOffsetUpdate(an)
 			} else if nacks == 0 {
-				err := ed.handleAckOffsetUpdate(an)
-				if err != nil {
-					return false, err
-				}
+				ed.handleAckOffsetUpdate(an)
 				lastAck = an.offset
 			}
 		}
 	}
 	if nacks == 0 && lastAck != highestOffset {
-		err := ed.eventPoller.commitOffset(ed.ctx, highestOffset)
-		if err != nil {
-			return false, err
-		}
+		ed.eventPoller.commitOffset(highestOffset)
 	}
 	return true, nil // poll again straight away for more messages
 }
@@ -333,12 +341,12 @@ func (ed *eventDispatcher) handleNackOffsetUpdate(nack ackNack) {
 	// That means resetting the polling offest, and clearing out all our state
 	delete(ed.inflight, nack.id)
 	if ed.eventPoller.pollingOffset > nack.offset {
-		ed.eventPoller.rewindPollingOffset(nack.offset)
+		ed.eventPoller.rewindPollingOffset(nack.offset - 1)
 	}
-	ed.inflight = map[fftypes.UUID]*fftypes.Event{}
+	ed.inflight = map[fftypes.UUID]*core.Event{}
 }
 
-func (ed *eventDispatcher) handleAckOffsetUpdate(ack ackNack) error {
+func (ed *eventDispatcher) handleAckOffsetUpdate(ack ackNack) {
 	oldOffset := ed.eventPoller.getPollingOffset()
 	ed.mux.Lock()
 	delete(ed.inflight, ack.id)
@@ -351,26 +359,11 @@ func (ed *eventDispatcher) handleAckOffsetUpdate(ack ackNack) error {
 	ed.mux.Unlock()
 	if (lowestInflight == -1 || lowestInflight > ack.offset) && ack.offset > oldOffset {
 		// This was the lowest in flight, and we can move the offset forwards
-		return ed.eventPoller.commitOffset(ed.ctx, ack.offset)
-	}
-	return nil
-}
-
-func (ed *eventDispatcher) dispatchChangeEvent(ce *fftypes.ChangeEvent) {
-	select {
-	case ed.changeEvents <- ce:
-		log.L(ed.ctx).Tracef("Dispatched change event %+v", ce)
-		break
-	case <-ed.eventPoller.closed:
-		log.L(ed.ctx).Warnf("Dispatcher closed before dispatching change event")
+		ed.eventPoller.commitOffset(ack.offset)
 	}
 }
 
 func (ed *eventDispatcher) deliverEvents() {
-	if ed.transport.Capabilities().ChangeEvents && ed.subscription.definition.Options.ChangeEvents {
-		ed.cel.addDispatcher(*ed.subscription.definition.ID, ed)
-		defer ed.cel.removeDispatcher(*ed.subscription.definition.ID)
-	}
 	withData := ed.subscription.definition.Options.WithData != nil && *ed.subscription.definition.Options.WithData
 	for {
 		select {
@@ -379,30 +372,24 @@ func (ed *eventDispatcher) deliverEvents() {
 				return
 			}
 			log.L(ed.ctx).Debugf("Dispatching %s event: %.10d/%s [%s]: ref=%s/%s", ed.transport.Name(), event.Sequence, event.ID, event.Type, event.Namespace, event.Reference)
-			var data []*fftypes.Data
+			var data []*core.Data
 			var err error
 			if withData && event.Message != nil {
-				data, _, err = ed.data.GetMessageData(ed.ctx, event.Message, true)
+				data, _, err = ed.data.GetMessageDataCached(ed.ctx, event.Message)
 			}
 			if err == nil {
 				err = ed.transport.DeliveryRequest(ed.connID, ed.subscription.definition, event, data)
 			}
 			if err != nil {
-				ed.deliveryResponse(&fftypes.EventDeliveryResponse{ID: event.ID, Rejected: true})
+				ed.deliveryResponse(&core.EventDeliveryResponse{ID: event.ID, Rejected: true})
 			}
-		case changeEvent := <-ed.changeEvents:
-			ws, ok := ed.transport.(events.ChangeEventListener)
-			if !ok {
-				log.L(ed.ctx).Warnf("Change event received for transport that does not support change events '%s'", ed.transport.Name())
-				break
-			}
-			ws.ChangeEvent(ed.connID, changeEvent)
 		case <-ed.ctx.Done():
 			return
 		}
 	}
 }
-func (ed *eventDispatcher) deliveryResponse(response *fftypes.EventDeliveryResponse) {
+
+func (ed *eventDispatcher) deliveryResponse(response *core.EventDeliveryResponse) {
 	l := log.L(ed.ctx)
 
 	ed.mux.Lock()
@@ -424,7 +411,7 @@ func (ed *eventDispatcher) deliveryResponse(response *fftypes.EventDeliveryRespo
 	// We might have a message to send, do that before we dispatch the ack
 	// Note a failure to send the reply does not invalidate the ack
 	if response.Reply != nil {
-		ed.syshandlers.SendReply(ed.ctx, event, response.Reply)
+		ed.sendReply(ed.ctx, event, response.Reply)
 	}
 
 	l.Debugf("Response for %s event: %.10d/%s [%s]: ref=%s/%s rejected=%t info='%s'", ed.transport.Name(), event.Sequence, event.ID, event.Type, event.Namespace, event.Reference, response.Rejected, response.Info)

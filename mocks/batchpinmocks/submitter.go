@@ -5,7 +5,9 @@ package batchpinmocks
 import (
 	context "context"
 
-	fftypes "github.com/hyperledger/firefly/pkg/fftypes"
+	fftypes "github.com/hyperledger/firefly-common/pkg/fftypes"
+	core "github.com/hyperledger/firefly/pkg/core"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -14,13 +16,80 @@ type Submitter struct {
 	mock.Mock
 }
 
-// SubmitPinnedBatch provides a mock function with given fields: ctx, batch, contexts
-func (_m *Submitter) SubmitPinnedBatch(ctx context.Context, batch *fftypes.Batch, contexts []*fftypes.Bytes32) error {
-	ret := _m.Called(ctx, batch, contexts)
+// Name provides a mock function with given fields:
+func (_m *Submitter) Name() string {
+	ret := _m.Called()
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
+// PrepareOperation provides a mock function with given fields: ctx, op
+func (_m *Submitter) PrepareOperation(ctx context.Context, op *core.Operation) (*core.PreparedOperation, error) {
+	ret := _m.Called(ctx, op)
+
+	var r0 *core.PreparedOperation
+	if rf, ok := ret.Get(0).(func(context.Context, *core.Operation) *core.PreparedOperation); ok {
+		r0 = rf(ctx, op)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*core.PreparedOperation)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *core.Operation) error); ok {
+		r1 = rf(ctx, op)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// RunOperation provides a mock function with given fields: ctx, op
+func (_m *Submitter) RunOperation(ctx context.Context, op *core.PreparedOperation) (fftypes.JSONObject, bool, error) {
+	ret := _m.Called(ctx, op)
+
+	var r0 fftypes.JSONObject
+	if rf, ok := ret.Get(0).(func(context.Context, *core.PreparedOperation) fftypes.JSONObject); ok {
+		r0 = rf(ctx, op)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(fftypes.JSONObject)
+		}
+	}
+
+	var r1 bool
+	if rf, ok := ret.Get(1).(func(context.Context, *core.PreparedOperation) bool); ok {
+		r1 = rf(ctx, op)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	var r2 error
+	if rf, ok := ret.Get(2).(func(context.Context, *core.PreparedOperation) error); ok {
+		r2 = rf(ctx, op)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// SubmitPinnedBatch provides a mock function with given fields: ctx, batch, contexts, payloadRef
+func (_m *Submitter) SubmitPinnedBatch(ctx context.Context, batch *core.BatchPersisted, contexts []*fftypes.Bytes32, payloadRef string) error {
+	ret := _m.Called(ctx, batch, contexts, payloadRef)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *fftypes.Batch, []*fftypes.Bytes32) error); ok {
-		r0 = rf(ctx, batch, contexts)
+	if rf, ok := ret.Get(0).(func(context.Context, *core.BatchPersisted, []*fftypes.Bytes32, string) error); ok {
+		r0 = rf(ctx, batch, contexts, payloadRef)
 	} else {
 		r0 = ret.Error(0)
 	}

@@ -10,10 +10,9 @@ CREATE TABLE transactions (
   created     BIGINT          NOT NULL,
   protocol_id VARCHAR(256),
   status      VARCHAR(64)     NOT NULL,
-  info        JSONB
+  info        TEXT
 );
 
-CREATE UNIQUE INDEX transactions_id ON data(id);
 CREATE INDEX transactions_created ON transactions(created);
 CREATE INDEX transactions_protocol_id ON transactions(protocol_id);
 CREATE INDEX transactions_ref ON transactions(ref);

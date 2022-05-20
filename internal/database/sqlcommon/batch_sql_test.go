@@ -23,8 +23,9 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -38,30 +39,33 @@ func TestBatch2EWithDB(t *testing.T) {
 	// Create a new batch entry
 	batchID := fftypes.NewUUID()
 	msgID1 := fftypes.NewUUID()
-	batch := &fftypes.Batch{
-		ID:   batchID,
-		Type: fftypes.MessageTypeBroadcast,
-		Identity: fftypes.Identity{
-			Key:    "0x12345",
-			Author: "did:firefly:org/abcd",
-		},
-		Namespace: "ns1",
-		Hash:      fftypes.NewRandB32(),
-		Created:   fftypes.Now(),
-		Payload: fftypes.BatchPayload{
-			Messages: []*fftypes.Message{
-				{Header: fftypes.MessageHeader{ID: msgID1}},
+	batch := &core.BatchPersisted{
+		BatchHeader: core.BatchHeader{
+			ID:   batchID,
+			Type: core.BatchTypeBroadcast,
+			SignerRef: core.SignerRef{
+				Key:    "0x12345",
+				Author: "did:firefly:org/abcd",
 			},
-			TX: fftypes.TransactionRef{
-				Type: fftypes.TransactionTypeNone,
-			},
+			Namespace: "ns1",
+			Node:      fftypes.NewUUID(),
+			Created:   fftypes.Now(),
 		},
+		Hash: fftypes.NewRandB32(),
+		TX: core.TransactionRef{
+			Type: core.TransactionTypeUnpinned,
+		},
+		Manifest: fftypes.JSONAnyPtr((&core.BatchManifest{
+			Messages: []*core.MessageManifestEntry{
+				{MessageRef: core.MessageRef{ID: msgID1}},
+			},
+		}).String()),
 	}
 
-	s.callbacks.On("UUIDCollectionNSEvent", database.CollectionBatches, fftypes.ChangeEventTypeCreated, "ns1", batchID, mock.Anything).Return()
-	s.callbacks.On("UUIDCollectionNSEvent", database.CollectionBatches, fftypes.ChangeEventTypeUpdated, "ns1", batchID, mock.Anything).Return()
+	s.callbacks.On("UUIDCollectionNSEvent", database.CollectionBatches, core.ChangeEventTypeCreated, "ns1", batchID, mock.Anything).Return()
+	s.callbacks.On("UUIDCollectionNSEvent", database.CollectionBatches, core.ChangeEventTypeUpdated, "ns1", batchID, mock.Anything).Return()
 
-	err := s.UpsertBatch(ctx, batch, true)
+	err := s.UpsertBatch(ctx, batch)
 	assert.NoError(t, err)
 
 	// Check we get the exact same batch back
@@ -76,36 +80,38 @@ func TestBatch2EWithDB(t *testing.T) {
 	// and does not account for the verification that happens at the higher level)
 	txid := fftypes.NewUUID()
 	msgID2 := fftypes.NewUUID()
-	payloadRef := ""
-	batchUpdated := &fftypes.Batch{
-		ID:   batchID,
-		Type: fftypes.MessageTypeBroadcast,
-		Identity: fftypes.Identity{
-			Key:    "0x12345",
-			Author: "did:firefly:org/abcd",
-		},
-		Namespace: "ns1",
-		Hash:      fftypes.NewRandB32(),
-		Created:   fftypes.Now(),
-		Payload: fftypes.BatchPayload{
-			TX: fftypes.TransactionRef{
-				ID:   txid,
-				Type: fftypes.TransactionTypeBatchPin,
+	batchUpdated := &core.BatchPersisted{
+		BatchHeader: core.BatchHeader{
+			ID:   batchID,
+			Type: core.BatchTypePrivate,
+			SignerRef: core.SignerRef{
+				Key:    "0x12345",
+				Author: "did:firefly:org/abcd",
 			},
-			Messages: []*fftypes.Message{
-				{Header: fftypes.MessageHeader{ID: msgID1}},
-				{Header: fftypes.MessageHeader{ID: msgID2}},
-			},
+			Namespace: "ns1",
+			Node:      fftypes.NewUUID(),
+			Created:   fftypes.Now(),
 		},
-		PayloadRef: payloadRef,
-		Confirmed:  fftypes.Now(),
+		Hash: fftypes.NewRandB32(),
+		TX: core.TransactionRef{
+			ID:   txid,
+			Type: core.TransactionTypeBatchPin,
+		},
+		Manifest: fftypes.JSONAnyPtr((&core.BatchManifest{
+			Messages: []*core.MessageManifestEntry{
+				{MessageRef: core.MessageRef{ID: msgID1}},
+				{MessageRef: core.MessageRef{ID: msgID2}},
+			},
+		}).String()),
+		Confirmed: fftypes.Now(),
 	}
 
 	// Rejects hash change
-	err = s.UpsertBatch(context.Background(), batchUpdated, false)
+	err = s.UpsertBatch(context.Background(), batchUpdated)
 	assert.Equal(t, database.HashMismatch, err)
 
-	err = s.UpsertBatch(context.Background(), batchUpdated, true)
+	batchUpdated.Hash = batch.Hash
+	err = s.UpsertBatch(context.Background(), batchUpdated)
 	assert.NoError(t, err)
 
 	// Check we get the exact same message back - note the removal of one of the batch elements
@@ -161,7 +167,7 @@ func TestBatch2EWithDB(t *testing.T) {
 func TestUpsertBatchFailBegin(t *testing.T) {
 	s, mock := newMockProvider().init()
 	mock.ExpectBegin().WillReturnError(fmt.Errorf("pop"))
-	err := s.UpsertBatch(context.Background(), &fftypes.Batch{}, true)
+	err := s.UpsertBatch(context.Background(), &core.BatchPersisted{})
 	assert.Regexp(t, "FF10114", err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -172,7 +178,7 @@ func TestUpsertBatchFailSelect(t *testing.T) {
 	mock.ExpectQuery("SELECT .*").WillReturnError(fmt.Errorf("pop"))
 	mock.ExpectRollback()
 	batchID := fftypes.NewUUID()
-	err := s.UpsertBatch(context.Background(), &fftypes.Batch{ID: batchID}, true)
+	err := s.UpsertBatch(context.Background(), &core.BatchPersisted{BatchHeader: core.BatchHeader{ID: batchID}})
 	assert.Regexp(t, "FF10115", err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -184,7 +190,7 @@ func TestUpsertBatchFailInsert(t *testing.T) {
 	mock.ExpectExec("INSERT .*").WillReturnError(fmt.Errorf("pop"))
 	mock.ExpectRollback()
 	batchID := fftypes.NewUUID()
-	err := s.UpsertBatch(context.Background(), &fftypes.Batch{ID: batchID}, true)
+	err := s.UpsertBatch(context.Background(), &core.BatchPersisted{BatchHeader: core.BatchHeader{ID: batchID}})
 	assert.Regexp(t, "FF10116", err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -192,11 +198,12 @@ func TestUpsertBatchFailInsert(t *testing.T) {
 func TestUpsertBatchFailUpdate(t *testing.T) {
 	s, mock := newMockProvider().init()
 	batchID := fftypes.NewUUID()
+	hash := fftypes.NewRandB32()
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT .*").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(batchID.String()))
+	mock.ExpectQuery("SELECT .*").WillReturnRows(sqlmock.NewRows([]string{"hash"}).AddRow(hash))
 	mock.ExpectExec("UPDATE .*").WillReturnError(fmt.Errorf("pop"))
 	mock.ExpectRollback()
-	err := s.UpsertBatch(context.Background(), &fftypes.Batch{ID: batchID}, true)
+	err := s.UpsertBatch(context.Background(), &core.BatchPersisted{BatchHeader: core.BatchHeader{ID: batchID}, Hash: hash})
 	assert.Regexp(t, "FF10117", err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -208,7 +215,7 @@ func TestUpsertBatchFailCommit(t *testing.T) {
 	mock.ExpectQuery("SELECT .*").WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectExec("INSERT .*").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit().WillReturnError(fmt.Errorf("pop"))
-	err := s.UpsertBatch(context.Background(), &fftypes.Batch{ID: batchID}, true)
+	err := s.UpsertBatch(context.Background(), &core.BatchPersisted{BatchHeader: core.BatchHeader{ID: batchID}})
 	assert.Regexp(t, "FF10119", err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -254,7 +261,7 @@ func TestGetBatchesBuildQueryFail(t *testing.T) {
 	s, _ := newMockProvider().init()
 	f := database.BatchQueryFactory.NewFilter(context.Background()).Eq("id", map[bool]bool{true: false})
 	_, _, err := s.GetBatches(context.Background(), f)
-	assert.Regexp(t, "FF10149.*id", err)
+	assert.Regexp(t, "FF00143.*id", err)
 }
 
 func TestGetBatchesReadMessageFail(t *testing.T) {
@@ -279,7 +286,7 @@ func TestBatchUpdateBuildQueryFail(t *testing.T) {
 	mock.ExpectBegin()
 	u := database.BatchQueryFactory.NewUpdate(context.Background()).Set("id", map[bool]bool{true: false})
 	err := s.UpdateBatch(context.Background(), fftypes.NewUUID(), u)
-	assert.Regexp(t, "FF10149.*id", err)
+	assert.Regexp(t, "FF00143.*id", err)
 }
 
 func TestBatchUpdateFail(t *testing.T) {

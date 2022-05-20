@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,36 +19,29 @@ package bifactory
 import (
 	"context"
 
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
 	"github.com/hyperledger/firefly/internal/blockchain/ethereum"
 	"github.com/hyperledger/firefly/internal/blockchain/fabric"
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/pkg/blockchain"
 )
 
-var plugins = []blockchain.Plugin{
-	&ethereum.Ethereum{},
-	&fabric.Fabric{},
+var pluginsByName = map[string]func() blockchain.Plugin{
+	(*ethereum.Ethereum)(nil).Name(): func() blockchain.Plugin { return &ethereum.Ethereum{} },
+	(*fabric.Fabric)(nil).Name():     func() blockchain.Plugin { return &fabric.Fabric{} },
 }
 
-var pluginsByName = make(map[string]blockchain.Plugin)
-
-func init() {
-	for _, p := range plugins {
-		pluginsByName[p.Name()] = p
-	}
-}
-
-func InitPrefix(prefix config.Prefix) {
-	for _, plugin := range plugins {
-		plugin.InitPrefix(prefix.SubPrefix(plugin.Name()))
+func InitConfig(config config.Section) {
+	for name, plugin := range pluginsByName {
+		plugin().InitConfig(config.SubSection(name))
 	}
 }
 
 func GetPlugin(ctx context.Context, pluginType string) (blockchain.Plugin, error) {
 	plugin, ok := pluginsByName[pluginType]
 	if !ok {
-		return nil, i18n.NewError(ctx, i18n.MsgUnknownBlockchainPlugin, pluginType)
+		return nil, i18n.NewError(ctx, coremsgs.MsgUnknownBlockchainPlugin, pluginType)
 	}
-	return plugin, nil
+	return plugin(), nil
 }

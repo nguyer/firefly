@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -17,7 +17,7 @@
 package system
 
 import (
-	"github.com/hyperledger/firefly/internal/config"
+	"github.com/hyperledger/firefly-common/pkg/config"
 )
 
 const (
@@ -29,6 +29,6 @@ const (
 	SystemEventsConfReadAhead = "readAhead"
 )
 
-func (se *Events) InitPrefix(prefix config.Prefix) {
-	prefix.AddKnownKey(SystemEventsConfReadAhead, readAhead)
+func (se *Events) InitConfig(config config.Section) {
+	config.AddKnownKey(SystemEventsConfReadAhead, readAhead)
 }

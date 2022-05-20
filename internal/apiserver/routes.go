@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -16,79 +16,144 @@
 
 package apiserver
 
-import "github.com/hyperledger/firefly/internal/oapispec"
+import (
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly/internal/coreconfig"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/internal/oapispec"
+)
 
-const emptyObjectSchema = `{"type": "object"}`
+var routes = append(
+	globalRoutes([]*oapispec.Route{
+		getDIDDocByDID,
+		getIdentityByDID,
+		getNamespace,
+		getNamespaces,
+		getNetworkIdentities,
+		getNetworkNode,
+		getNetworkNodes,
+		getNetworkOrg,
+		getNetworkOrgs,
+		getStatus,
+		getStatusBatchManager,
+		getStatusPins,
+		getStatusWebSockets,
+		postNewNamespace,
+		postNewOrganization,
+		postNewOrganizationSelf,
+		postNodesSelf,
+	}),
+	namespacedRoutes([]*oapispec.Route{
+		deleteContractListener,
+		deleteSubscription,
+		getBatchByID,
+		getBatches,
+		getBlockchainEventByID,
+		getBlockchainEvents,
+		getChartHistogram,
+		getContractAPIByName,
+		getContractAPIInterface,
+		getContractAPIs,
+		getContractAPIListeners,
+		getContractInterface,
+		getContractInterfaceNameVersion,
+		getContractInterfaces,
+		getContractListenerByNameOrID,
+		getContractListeners,
+		getData,
+		getDataBlob,
+		getDataByID,
+		getDataMsgs,
+		getDatatypeByName,
+		getDatatypes,
+		getEventByID,
+		getEvents,
+		getGroupByHash,
+		getGroups,
+		getIdentities,
+		getIdentityByID,
+		getIdentityDID,
+		getIdentityVerifiers,
+		getMsgByID,
+		getMsgData,
+		getMsgEvents,
+		getMsgs,
+		getMsgTxn,
+		getOpByID,
+		getOps,
+		getSubscriptionByID,
+		getSubscriptions,
+		getTokenAccountPools,
+		getTokenAccounts,
+		getTokenApprovals,
+		getTokenBalances,
+		getTokenConnectors,
+		getTokenPoolByNameOrID,
+		getTokenPools,
+		getTokenTransferByID,
+		getTokenTransfers,
+		getTxnBlockchainEvents,
+		getTxnByID,
+		getTxnOps,
+		getTxns,
+		getTxnStatus,
+		getVerifierByID,
+		getVerifiers,
+		patchUpdateIdentity,
+		postContractAPIInvoke,
+		postContractAPIQuery,
+		postContractAPIListeners,
+		postContractInterfaceGenerate,
+		postContractInvoke,
+		postContractQuery,
+		postData,
+		postNewContractAPI,
+		postNewContractInterface,
+		postNewContractListener,
+		postNewDatatype,
+		postNewIdentity,
+		postNewMessageBroadcast,
+		postNewMessagePrivate,
+		postNewMessageRequestReply,
+		postNewSubscription,
+		postOpRetry,
+		postTokenApproval,
+		postTokenBurn,
+		postTokenMint,
+		postTokenPool,
+		postTokenTransfer,
+		putContractAPI,
+		putSubscription,
+	})...,
+)
 
-var routes = []*oapispec.Route{
-	postNewDatatype,
-	postNewNamespace,
-	postNewMessageBroadcast,
-	postNewMessagePrivate,
-	postNewMessageRequestReply,
-	postNodesSelf,
-	postNewOrganization,
-	postNewOrganizationSelf,
+func globalRoutes(routes []*oapispec.Route) []*oapispec.Route {
+	for _, route := range routes {
+		route.Tag = "Global"
+	}
+	return routes
+}
 
-	postBroadcastDatatype,
-	postBroadcastMessage,
-	postBroadcastNamespace,
-	postData,
-	postNewSubscription,
-	postRegisterOrg,
-	postRegisterNode,
-	postRegisterNodeOrg,
-	postRequestMessage,
-	postSendMessage,
+func namespacedRoutes(routes []*oapispec.Route) []*oapispec.Route {
+	newRoutes := make([]*oapispec.Route, len(routes))
+	for i, route := range routes {
+		route.Tag = "Default Namespace"
 
-	putSubscription,
+		routeCopy := *route
+		routeCopy.Name += "Namespace"
+		routeCopy.Path = "namespaces/{ns}/" + route.Path
+		routeCopy.PathParams = append(routeCopy.PathParams, &oapispec.PathParam{
+			Name: "ns", ExampleFromConf: coreconfig.NamespacesDefault, Description: coremsgs.APIParamsNamespace,
+		})
+		routeCopy.Tag = "Non-Default Namespace"
+		newRoutes[i] = &routeCopy
+	}
+	return append(routes, newRoutes...)
+}
 
-	deleteSubscription,
-
-	getBatchByID,
-	getBatches,
-	getData,
-	getDataBlob,
-	getDataByID,
-	getDatatypeByID,
-	getDatatypeByName,
-	getDatatypes,
-	getDataMsgs,
-	getEventByID,
-	getEvents,
-	getMsgByID,
-	getMsgData,
-	getMsgEvents,
-	getMsgOps,
-	getMsgTxn,
-	getMsgs,
-	getNetworkOrg,
-	getNetworkOrgs,
-	getNetworkNode,
-	getNetworkNodes,
-	getNamespace,
-	getNamespaces,
-	getOpByID,
-	getOps,
-	getStatus,
-	getSubscriptionByID,
-	getSubscriptions,
-	getTxnByID,
-	getTxnOps,
-	getTxns,
-
-	postTokenPool,
-	getTokenPools,
-	getTokenPoolsByType,
-	getTokenPoolByNameOrID,
-	getTokenPoolByName,
-	getTokenAccounts,
-	getTokenAccountsByPool,
-	getTokenTransfers,
-	getTokenTransfersByPool,
-	getTokenTransferByID,
-	postTokenMint,
-	postTokenBurn,
-	postTokenTransfer,
-	getTokenConnectors,
+func extractNamespace(pathParams map[string]string) string {
+	if ns, ok := pathParams["ns"]; ok {
+		return ns
+	}
+	return config.GetString(coreconfig.NamespacesDefault)
 }

@@ -11,10 +11,11 @@ CREATE TABLE operations (
   created     BIGINT          NOT NULL,
   updated     BIGINT,
   error       VARCHAR         NOT NULL,
-  info        BYTEA
+  info        TEXT
 );
 
 CREATE UNIQUE INDEX operations_id ON operations(id);
 CREATE INDEX operations_created ON operations(created);
 CREATE INDEX operations_backend ON operations(backend_id);
 CREATE INDEX operations_tx ON operations(tx_id);
+CREATE INDEX operations_type_status ON operations(optype,opstatus);

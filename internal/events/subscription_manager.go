@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -21,28 +21,49 @@ import (
 	"regexp"
 	"sync"
 
-	"github.com/hyperledger/firefly/internal/config"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly-common/pkg/retry"
+	"github.com/hyperledger/firefly/internal/broadcast"
+	"github.com/hyperledger/firefly/internal/coreconfig"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/data"
 	"github.com/hyperledger/firefly/internal/events/eifactory"
 	"github.com/hyperledger/firefly/internal/events/system"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
-	"github.com/hyperledger/firefly/internal/retry"
-	"github.com/hyperledger/firefly/internal/syshandlers"
+	"github.com/hyperledger/firefly/internal/events/websockets"
+	"github.com/hyperledger/firefly/internal/privatemessaging"
+	"github.com/hyperledger/firefly/internal/txcommon"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
 	"github.com/hyperledger/firefly/pkg/events"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 type subscription struct {
-	definition *fftypes.Subscription
+	definition *core.Subscription
 
 	dispatcherElection chan bool
 	eventMatcher       *regexp.Regexp
-	groupFilter        *regexp.Regexp
-	tagFilter          *regexp.Regexp
-	topicsFilter       *regexp.Regexp
-	authorFilter       *regexp.Regexp
+	messageFilter      *messageFilter
+	blockchainFilter   *blockchainFilter
+	transactionFilter  *transactionFilter
+	topicFilter        *regexp.Regexp
+}
+
+type messageFilter struct {
+	groupFilter  *regexp.Regexp
+	tagFilter    *regexp.Regexp
+	authorFilter *regexp.Regexp
+}
+
+type blockchainFilter struct {
+	nameFilter     *regexp.Regexp
+	listenerFilter *regexp.Regexp
+}
+
+type transactionFilter struct {
+	typeFilter *regexp.Regexp
 }
 
 type connection struct {
@@ -57,8 +78,10 @@ type subscriptionManager struct {
 	ctx                       context.Context
 	database                  database.Plugin
 	data                      data.Manager
+	txHelper                  txcommon.Helper
 	eventNotifier             *eventNotifier
-	syshandlers               syshandlers.SystemHandlers
+	broadcast                 broadcast.Manager
+	messaging                 privatemessaging.Manager
 	transports                map[string]events.Plugin
 	connections               map[string]*connection
 	mux                       sync.Mutex
@@ -67,11 +90,10 @@ type subscriptionManager struct {
 	cancelCtx                 func()
 	newOrUpdatedSubscriptions chan *fftypes.UUID
 	deletedSubscriptions      chan *fftypes.UUID
-	cel                       *changeEventListener
 	retry                     retry.Retry
 }
 
-func newSubscriptionManager(ctx context.Context, di database.Plugin, dm data.Manager, en *eventNotifier, sh syshandlers.SystemHandlers) (*subscriptionManager, error) {
+func newSubscriptionManager(ctx context.Context, di database.Plugin, dm data.Manager, en *eventNotifier, bm broadcast.Manager, pm privatemessaging.Manager, txHelper txcommon.Helper) (*subscriptionManager, error) {
 	ctx, cancelCtx := context.WithCancel(ctx)
 	sm := &subscriptionManager{
 		ctx:                       ctx,
@@ -82,17 +104,18 @@ func newSubscriptionManager(ctx context.Context, di database.Plugin, dm data.Man
 		durableSubs:               make(map[fftypes.UUID]*subscription),
 		newOrUpdatedSubscriptions: make(chan *fftypes.UUID),
 		deletedSubscriptions:      make(chan *fftypes.UUID),
-		maxSubs:                   uint64(config.GetUint(config.SubscriptionMax)),
+		maxSubs:                   uint64(config.GetUint(coreconfig.SubscriptionMax)),
 		cancelCtx:                 cancelCtx,
 		eventNotifier:             en,
-		syshandlers:               sh,
+		broadcast:                 bm,
+		messaging:                 pm,
+		txHelper:                  txHelper,
 		retry: retry.Retry{
-			InitialDelay: config.GetDuration(config.SubscriptionsRetryInitialDelay),
-			MaximumDelay: config.GetDuration(config.SubscriptionsRetryMaxDelay),
-			Factor:       config.GetFloat64(config.SubscriptionsRetryFactor),
+			InitialDelay: config.GetDuration(coreconfig.SubscriptionsRetryInitialDelay),
+			MaximumDelay: config.GetDuration(coreconfig.SubscriptionsRetryMaxDelay),
+			Factor:       config.GetFloat64(coreconfig.SubscriptionsRetryFactor),
 		},
 	}
-	sm.cel = newChangeEventListener(ctx)
 
 	err := sm.loadTransports()
 	if err == nil {
@@ -103,7 +126,7 @@ func newSubscriptionManager(ctx context.Context, di database.Plugin, dm data.Man
 
 func (sm *subscriptionManager) loadTransports() error {
 	var err error
-	enabledTransports := config.GetStringSlice(config.EventTransportsEnabled)
+	enabledTransports := config.GetStringSlice(coreconfig.EventTransportsEnabled)
 	uniqueTransports := make(map[string]bool)
 	for _, transport := range enabledTransports {
 		uniqueTransports[transport] = true
@@ -122,9 +145,9 @@ func (sm *subscriptionManager) loadTransports() error {
 func (sm *subscriptionManager) initTransports() error {
 	var err error
 	for _, ei := range sm.transports {
-		prefix := config.NewPluginConfig("events").SubPrefix(ei.Name())
-		ei.InitPrefix(prefix)
-		err = ei.Init(sm.ctx, prefix, &boundCallbacks{sm: sm, ei: ei})
+		config := config.RootSection("events").SubSection(ei.Name())
+		ei.InitConfig(config)
+		err = ei.Init(sm.ctx, config, &boundCallbacks{sm: sm, ei: ei})
 		if err != nil {
 			return err
 		}
@@ -155,7 +178,6 @@ func (sm *subscriptionManager) start() error {
 	}
 	log.L(sm.ctx).Infof("Subscription manager started - loaded %d durable subscriptions", len(sm.durableSubs))
 	go sm.subscriptionEventListener()
-	go sm.cel.changeEventListener()
 	return nil
 }
 
@@ -173,7 +195,7 @@ func (sm *subscriptionManager) subscriptionEventListener() {
 }
 
 func (sm *subscriptionManager) newOrUpdatedDurableSubscription(id *fftypes.UUID) {
-	var subDef *fftypes.Subscription
+	var subDef *core.Subscription
 	err := sm.retry.Do(sm.ctx, "retrieve subscription", func(attempt int) (retry bool, err error) {
 		subDef, err = sm.database.GetSubscriptionByID(sm.ctx, id)
 		return err != nil, err // indefinite retry
@@ -203,7 +225,7 @@ func (sm *subscriptionManager) newOrUpdatedDurableSubscription(id *fftypes.UUID)
 			return
 		}
 		// Need to close the old one
-		loaded, dispatchers := sm.closeDurabeSubscriptionLocked(subDef.ID)
+		loaded, dispatchers := sm.closeDurableSubscriptionLocked(subDef.ID)
 		if loaded {
 			// Outside the lock, close out the active dispatchers
 			sm.mux.Unlock()
@@ -219,7 +241,7 @@ func (sm *subscriptionManager) newOrUpdatedDurableSubscription(id *fftypes.UUID)
 	}
 }
 
-func (sm *subscriptionManager) closeDurabeSubscriptionLocked(id *fftypes.UUID) (bool, []*eventDispatcher) {
+func (sm *subscriptionManager) closeDurableSubscriptionLocked(id *fftypes.UUID) (bool, []*eventDispatcher) {
 	var dispatchers []*eventDispatcher
 	// Remove it from the list of durable subs (if there)
 	_, loaded := sm.durableSubs[*id]
@@ -239,7 +261,7 @@ func (sm *subscriptionManager) closeDurabeSubscriptionLocked(id *fftypes.UUID) (
 
 func (sm *subscriptionManager) deletedDurableSubscription(id *fftypes.UUID) {
 	sm.mux.Lock()
-	loaded, dispatchers := sm.closeDurabeSubscriptionLocked(id)
+	loaded, dispatchers := sm.closeDurableSubscriptionLocked(id)
 	sm.mux.Unlock()
 
 	log.L(sm.ctx).Infof("Cleaning up subscription %s loaded=%t dispatchers=%d", id, loaded, len(dispatchers))
@@ -249,18 +271,18 @@ func (sm *subscriptionManager) deletedDurableSubscription(id *fftypes.UUID) {
 		dispatcher.close()
 	}
 	// Delete the offsets, as the durable subscriptions are gone
-	err := sm.database.DeleteOffset(sm.ctx, fftypes.OffsetTypeSubscription, id.String())
+	err := sm.database.DeleteOffset(sm.ctx, core.OffsetTypeSubscription, id.String())
 	if err != nil {
 		log.L(sm.ctx).Errorf("Failed to cleanup subscription offset: %s", err)
 	}
 }
 
-func (sm *subscriptionManager) parseSubscriptionDef(ctx context.Context, subDef *fftypes.Subscription) (sub *subscription, err error) {
+func (sm *subscriptionManager) parseSubscriptionDef(ctx context.Context, subDef *core.Subscription) (sub *subscription, err error) {
 	filter := subDef.Filter
 
 	transport, ok := sm.transports[subDef.Transport]
 	if !ok {
-		return nil, i18n.NewError(ctx, i18n.MsgUnknownEventTransportPlugin, subDef.Transport)
+		return nil, i18n.NewError(ctx, coremsgs.MsgUnknownEventTransportPlugin, subDef.Transport)
 	}
 
 	if err := transport.ValidateOptions(&subDef.Options); err != nil {
@@ -271,39 +293,74 @@ func (sm *subscriptionManager) parseSubscriptionDef(ctx context.Context, subDef 
 	if filter.Events != "" {
 		eventFilter, err = regexp.Compile(filter.Events)
 		if err != nil {
-			return nil, i18n.WrapError(ctx, err, i18n.MsgRegexpCompileFailed, "filter.events", filter.Events)
+			return nil, i18n.WrapError(ctx, err, coremsgs.MsgRegexpCompileFailed, "filter.events", filter.Events)
 		}
 	}
 
 	var tagFilter *regexp.Regexp
-	if filter.Tag != "" {
-		tagFilter, err = regexp.Compile(filter.Tag)
+	if filter.DeprecatedTag != "" {
+		log.L(ctx).Warnf("Your subscription filter uses the deprecated 'tag' key - please change to 'message.tag' instead")
+		tagFilter, err = regexp.Compile(filter.DeprecatedTag)
 		if err != nil {
-			return nil, i18n.WrapError(ctx, err, i18n.MsgRegexpCompileFailed, "filter.tag", filter.Tag)
+			return nil, i18n.WrapError(ctx, err, coremsgs.MsgRegexpCompileFailed, "filter.tag", filter.DeprecatedTag)
+		}
+	}
+
+	if filter.Message.Tag != "" {
+		tagFilter, err = regexp.Compile(filter.Message.Tag)
+		if err != nil {
+			return nil, i18n.WrapError(ctx, err, coremsgs.MsgRegexpCompileFailed, "filter.message.tag", filter.Message.Tag)
 		}
 	}
 
 	var groupFilter *regexp.Regexp
-	if filter.Group != "" {
-		groupFilter, err = regexp.Compile(filter.Group)
+	if filter.DeprecatedGroup != "" {
+		log.L(ctx).Warnf("Your subscription filter uses the deprecated 'group' key - please change to 'message.group' instead")
+		// set to group filter, will be overwritten by non-deprecated key if both are present
+		groupFilter, err = regexp.Compile(filter.DeprecatedGroup)
 		if err != nil {
-			return nil, i18n.WrapError(ctx, err, i18n.MsgRegexpCompileFailed, "filter.group", filter.Group)
+			return nil, i18n.WrapError(ctx, err, coremsgs.MsgRegexpCompileFailed, "filter.group", filter.DeprecatedGroup)
 		}
 	}
 
-	var topicsFilter *regexp.Regexp
-	if filter.Topics != "" {
-		topicsFilter, err = regexp.Compile(filter.Topics)
+	if filter.Message.Group != "" {
+		groupFilter, err = regexp.Compile(filter.Message.Group)
 		if err != nil {
-			return nil, i18n.WrapError(ctx, err, i18n.MsgRegexpCompileFailed, "filter.topics", filter.Topics)
+			return nil, i18n.WrapError(ctx, err, coremsgs.MsgRegexpCompileFailed, "filter.message.group", filter.Message.Group)
+		}
+	}
+
+	var topicFilter *regexp.Regexp
+	if filter.DeprecatedTopics != "" {
+		log.L(ctx).Warnf("Your subscription filter uses the deprecated 'topics' key - please change to 'topic' instead")
+		// set to topics filter, will be overwritten by non-deprecated key if both are present
+		topicFilter, err = regexp.Compile(filter.DeprecatedTopics)
+		if err != nil {
+			return nil, i18n.WrapError(ctx, err, coremsgs.MsgRegexpCompileFailed, "filter.topics", filter.DeprecatedTopics)
+		}
+	}
+
+	if filter.Topic != "" {
+		topicFilter, err = regexp.Compile(filter.Topic)
+		if err != nil {
+			return nil, i18n.WrapError(ctx, err, coremsgs.MsgRegexpCompileFailed, "filter.topic", filter.Topic)
 		}
 	}
 
 	var authorFilter *regexp.Regexp
-	if filter.Author != "" {
-		authorFilter, err = regexp.Compile(filter.Author)
+	if filter.DeprecatedAuthor != "" {
+		log.L(ctx).Warnf("Your subscription filter uses the deprecated 'author' key - please change to 'message.author' instead")
+		// set to author filter, will be overwritten by non-deprecated key if both are present
+		authorFilter, err = regexp.Compile(filter.DeprecatedAuthor)
 		if err != nil {
-			return nil, i18n.WrapError(ctx, err, i18n.MsgRegexpCompileFailed, "filter.author", filter.Author)
+			return nil, i18n.WrapError(ctx, err, coremsgs.MsgRegexpCompileFailed, "filter.author", filter.DeprecatedAuthor)
+		}
+	}
+
+	if filter.Message.Author != "" {
+		authorFilter, err = regexp.Compile(filter.Message.Author)
+		if err != nil {
+			return nil, i18n.WrapError(ctx, err, coremsgs.MsgRegexpCompileFailed, "filter.message.author", filter.Message.Author)
 		}
 	}
 
@@ -311,11 +368,53 @@ func (sm *subscriptionManager) parseSubscriptionDef(ctx context.Context, subDef 
 		dispatcherElection: make(chan bool, 1),
 		definition:         subDef,
 		eventMatcher:       eventFilter,
-		groupFilter:        groupFilter,
-		tagFilter:          tagFilter,
-		topicsFilter:       topicsFilter,
-		authorFilter:       authorFilter,
+		topicFilter:        topicFilter,
+		messageFilter: &messageFilter{
+			tagFilter:    tagFilter,
+			groupFilter:  groupFilter,
+			authorFilter: authorFilter,
+		},
 	}
+
+	if (filter.BlockchainEvent != core.BlockchainEventFilter{}) {
+		var nameFilter *regexp.Regexp
+		if filter.BlockchainEvent.Name != "" {
+			nameFilter, err = regexp.Compile(filter.BlockchainEvent.Name)
+			if err != nil {
+				return nil, i18n.WrapError(ctx, err, coremsgs.MsgRegexpCompileFailed, "filter.blockchain.name", filter.BlockchainEvent.Name)
+			}
+		}
+
+		var listenerFilter *regexp.Regexp
+		if filter.BlockchainEvent.Listener != "" {
+			listenerFilter, err = regexp.Compile(filter.BlockchainEvent.Listener)
+			if err != nil {
+				return nil, i18n.WrapError(ctx, err, coremsgs.MsgRegexpCompileFailed, "filter.blockchain.listener", filter.BlockchainEvent.Listener)
+			}
+		}
+
+		bf := &blockchainFilter{
+			nameFilter:     nameFilter,
+			listenerFilter: listenerFilter,
+		}
+		sub.blockchainFilter = bf
+	}
+
+	if (filter.Transaction != core.TransactionFilter{}) {
+		var typeFilter *regexp.Regexp
+		if filter.Transaction.Type != "" {
+			typeFilter, err = regexp.Compile(filter.Transaction.Type)
+			if err != nil {
+				return nil, i18n.WrapError(ctx, err, coremsgs.MsgRegexpCompileFailed, "filter.transaction.type", filter.Transaction.Type)
+			}
+		}
+
+		tf := &transactionFilter{
+			typeFilter: typeFilter,
+		}
+		sub.transactionFilter = tf
+	}
+
 	return sub, err
 }
 
@@ -327,7 +426,7 @@ func (sm *subscriptionManager) close() {
 	}
 	sm.mux.Unlock()
 	for _, conn := range conns {
-		sm.connnectionClosed(conn.ei, conn.id)
+		sm.connectionClosed(conn.ei, conn.id)
 	}
 }
 
@@ -353,7 +452,7 @@ func (sm *subscriptionManager) registerConnection(ei events.Plugin, connID strin
 	// Check if there are existing dispatchers
 	conn := sm.getCreateConnLocked(ei, connID)
 	if conn.ei != ei {
-		return i18n.NewError(sm.ctx, i18n.MsgMismatchedTransport, connID, ei.Name(), conn.ei.Name())
+		return i18n.NewError(sm.ctx, coremsgs.MsgMismatchedTransport, connID, ei.Name(), conn.ei.Name())
 	}
 
 	// Update the matcher for this connection ID
@@ -381,26 +480,26 @@ func (sm *subscriptionManager) matchSubToConnLocked(conn *connection, sub *subsc
 	}
 	if conn.transport == sub.definition.Transport && conn.matcher(sub.definition.SubscriptionRef) {
 		if _, ok := conn.dispatchers[*sub.definition.ID]; !ok {
-			dispatcher := newEventDispatcher(sm.ctx, conn.ei, sm.database, sm.data, sm.syshandlers, conn.id, sub, sm.eventNotifier, sm.cel)
+			dispatcher := newEventDispatcher(sm.ctx, conn.ei, sm.database, sm.data, sm.broadcast, sm.messaging, conn.id, sub, sm.eventNotifier, sm.txHelper)
 			conn.dispatchers[*sub.definition.ID] = dispatcher
 			dispatcher.start()
 		}
 	}
 }
 
-func (sm *subscriptionManager) ephemeralSubscription(ei events.Plugin, connID, namespace string, filter *fftypes.SubscriptionFilter, options *fftypes.SubscriptionOptions) error {
+func (sm *subscriptionManager) ephemeralSubscription(ei events.Plugin, connID, namespace string, filter *core.SubscriptionFilter, options *core.SubscriptionOptions) error {
 	sm.mux.Lock()
 	defer sm.mux.Unlock()
 
 	conn := sm.getCreateConnLocked(ei, connID)
 
 	if conn.ei != ei {
-		return i18n.NewError(sm.ctx, i18n.MsgMismatchedTransport, connID, ei.Name(), conn.ei.Name())
+		return i18n.NewError(sm.ctx, coremsgs.MsgMismatchedTransport, connID, ei.Name(), conn.ei.Name())
 	}
 
 	subID := fftypes.NewUUID()
-	subDefinition := &fftypes.Subscription{
-		SubscriptionRef: fftypes.SubscriptionRef{
+	subDefinition := &core.Subscription{
+		SubscriptionRef: core.SubscriptionRef{
 			ID:        subID,
 			Name:      subID.String(),
 			Namespace: namespace,
@@ -418,7 +517,7 @@ func (sm *subscriptionManager) ephemeralSubscription(ei events.Plugin, connID, n
 	}
 
 	// Create the dispatcher, and start immediately
-	dispatcher := newEventDispatcher(sm.ctx, ei, sm.database, sm.data, sm.syshandlers, connID, newSub, sm.eventNotifier, sm.cel)
+	dispatcher := newEventDispatcher(sm.ctx, ei, sm.database, sm.data, sm.broadcast, sm.messaging, connID, newSub, sm.eventNotifier, sm.txHelper)
 	dispatcher.start()
 
 	conn.dispatchers[*subID] = dispatcher
@@ -428,11 +527,11 @@ func (sm *subscriptionManager) ephemeralSubscription(ei events.Plugin, connID, n
 	return nil
 }
 
-func (sm *subscriptionManager) connnectionClosed(ei events.Plugin, connID string) {
+func (sm *subscriptionManager) connectionClosed(ei events.Plugin, connID string) {
 	sm.mux.Lock()
 	conn, ok := sm.connections[connID]
 	if ok && conn.ei != ei {
-		log.L(sm.ctx).Warnf(i18n.ExpandWithCode(sm.ctx, i18n.MsgMismatchedTransport, connID, ei.Name(), conn.ei.Name()))
+		log.L(sm.ctx).Warnf(i18n.ExpandWithCode(sm.ctx, i18n.MessageKey(coremsgs.MsgMismatchedTransport), connID, ei.Name(), conn.ei.Name()))
 		sm.mux.Unlock()
 		return
 	}
@@ -449,7 +548,7 @@ func (sm *subscriptionManager) connnectionClosed(ei events.Plugin, connID string
 	}
 }
 
-func (sm *subscriptionManager) deliveryResponse(ei events.Plugin, connID string, inflight *fftypes.EventDeliveryResponse) {
+func (sm *subscriptionManager) deliveryResponse(ei events.Plugin, connID string, inflight *core.EventDeliveryResponse) {
 	sm.mux.Lock()
 	var dispatcher *eventDispatcher
 	conn, ok := sm.connections[connID]
@@ -457,17 +556,25 @@ func (sm *subscriptionManager) deliveryResponse(ei events.Plugin, connID string,
 		dispatcher = conn.dispatchers[*inflight.Subscription.ID]
 	}
 	if ok && conn.ei != ei {
-		err := i18n.NewError(sm.ctx, i18n.MsgMismatchedTransport, connID, ei.Name(), conn.ei.Name())
+		err := i18n.NewError(sm.ctx, coremsgs.MsgMismatchedTransport, connID, ei.Name(), conn.ei.Name())
 		log.L(sm.ctx).Errorf("Invalid DeliveryResponse callback from plugin: %s", err)
 		sm.mux.Unlock()
 		return
 	}
 	if dispatcher == nil {
-		err := i18n.NewError(sm.ctx, i18n.MsgConnSubscriptionNotStarted, inflight.Subscription.ID)
+		err := i18n.NewError(sm.ctx, coremsgs.MsgConnSubscriptionNotStarted, inflight.Subscription.ID)
 		log.L(sm.ctx).Errorf("Invalid DeliveryResponse callback from plugin: %s", err)
 		sm.mux.Unlock()
 		return
 	}
 	sm.mux.Unlock()
 	dispatcher.deliveryResponse(inflight)
+}
+
+func (sm *subscriptionManager) getWebSocketStatus() *core.WebSocketStatus {
+	pluginName := (*websockets.WebSockets)(nil).Name()
+	if plugin, ok := sm.transports[pluginName]; ok {
+		return plugin.(*websockets.WebSockets).GetStatus()
+	}
+	return &core.WebSocketStatus{Enabled: false}
 }

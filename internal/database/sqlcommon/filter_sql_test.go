@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -49,7 +49,7 @@ func TestSQLQueryFactory(t *testing.T) {
 	sel := squirrel.Select("*").From("mytable")
 	sel, _, _, err := s.filterSelect(context.Background(), "", sel, f, map[string]string{
 		"namespace": "ns",
-	}, []string{"sequence"})
+	}, []interface{}{"sequence"})
 	assert.NoError(t, err)
 
 	sqlFilter, args, err := sel.ToSql()
@@ -85,7 +85,7 @@ func TestSQLQueryFactoryExtraOps(t *testing.T) {
 		Descending()
 
 	sel := squirrel.Select("*").From("mytable AS mt")
-	sel, _, _, err := s.filterSelect(context.Background(), "mt", sel, f, nil, []string{"sequence"})
+	sel, _, _, err := s.filterSelect(context.Background(), "mt", sel, f, nil, []interface{}{"sequence"})
 	assert.NoError(t, err)
 
 	sqlFilter, _, err := sel.ToSql()
@@ -93,12 +93,40 @@ func TestSQLQueryFactoryExtraOps(t *testing.T) {
 	assert.Equal(t, "SELECT * FROM mytable AS mt WHERE (mt.created IN (?,?,?) AND mt.created NOT IN (?,?,?) AND mt.id = ? AND mt.id IN (?) AND mt.id IS NOT NULL AND mt.created < ? AND mt.created <= ? AND mt.created >= ? AND mt.created <> ? AND mt.seq > ? AND mt.topics LIKE ? AND mt.topics NOT LIKE ? AND mt.topics ILIKE ? AND mt.topics NOT ILIKE ?) ORDER BY mt.seq DESC", sqlFilter)
 }
 
+func TestSQLQueryFactoryEvenMoreOps(t *testing.T) {
+
+	s, _ := newMockProvider().init()
+	fb := database.MessageQueryFactory.NewFilter(context.Background())
+	u := fftypes.MustParseUUID("4066ABDC-8BBD-4472-9D29-1A55B467F9B9")
+	f := fb.And(
+		fb.IEq("id", u),
+		fb.NIeq("id", nil),
+		fb.StartsWith("topics", "abc"),
+		fb.NotStartsWith("topics", "def"),
+		fb.IStartsWith("topics", "ghi"),
+		fb.NotIStartsWith("topics", "jkl"),
+		fb.EndsWith("topics", "mno"),
+		fb.NotEndsWith("topics", "pqr"),
+		fb.IEndsWith("topics", "sty"),
+		fb.NotIEndsWith("topics", "vwx"),
+	).
+		Descending()
+
+	sel := squirrel.Select("*").From("mytable AS mt")
+	sel, _, _, err := s.filterSelect(context.Background(), "mt", sel, f, nil, []interface{}{"sequence"})
+	assert.NoError(t, err)
+
+	sqlFilter, _, err := sel.ToSql()
+	assert.NoError(t, err)
+	assert.Equal(t, "SELECT * FROM mytable AS mt WHERE (mt.id ILIKE ? AND mt.id NOT ILIKE ? AND mt.topics LIKE ? AND mt.topics NOT LIKE ? AND mt.topics ILIKE ? AND mt.topics NOT ILIKE ? AND mt.topics LIKE ? AND mt.topics NOT LIKE ? AND mt.topics ILIKE ? AND mt.topics NOT ILIKE ?) ORDER BY mt.seq DESC", sqlFilter)
+}
+
 func TestSQLQueryFactoryFinalizeFail(t *testing.T) {
 	s, _ := newMockProvider().init()
 	fb := database.MessageQueryFactory.NewFilter(context.Background())
 	sel := squirrel.Select("*").From("mytable")
-	_, _, _, err := s.filterSelect(context.Background(), "ns", sel, fb.Eq("namespace", map[bool]bool{true: false}), nil, []string{"sequence"})
-	assert.Regexp(t, "FF10149.*namespace", err)
+	_, _, _, err := s.filterSelect(context.Background(), "ns", sel, fb.Eq("namespace", map[bool]bool{true: false}), nil, []interface{}{"sequence"})
+	assert.Regexp(t, "FF00143.*namespace", err)
 }
 
 func TestSQLQueryFactoryBadOp(t *testing.T) {
@@ -132,4 +160,68 @@ func TestSQLQueryFactoryBadOpInAnd(t *testing.T) {
 		},
 	}, nil)
 	assert.Regexp(t, "FF10150.*wrong", err)
+}
+
+func TestSQLQueryFactoryDefaultSort(t *testing.T) {
+
+	s, _ := newMockProvider().init()
+	sel := squirrel.Select("*").From("mytable")
+	fb := database.MessageQueryFactory.NewFilter(context.Background())
+	f := fb.And(
+		fb.Eq("namespace", "ns1"),
+	)
+	sel, _, _, err := s.filterSelect(context.Background(), "", sel, f, nil, []interface{}{
+		&database.SortField{
+			Field:      "sequence",
+			Descending: true,
+			Nulls:      database.NullsLast,
+		},
+	})
+	assert.NoError(t, err)
+
+	sqlFilter, args, err := sel.ToSql()
+	assert.NoError(t, err)
+	assert.Equal(t, "SELECT * FROM mytable WHERE (namespace = ?) ORDER BY seq DESC NULLS LAST", sqlFilter)
+	assert.Equal(t, "ns1", args[0])
+}
+
+func TestSQLQueryFactoryDefaultSortBadType(t *testing.T) {
+
+	s, _ := newMockProvider().init()
+	sel := squirrel.Select("*").From("mytable")
+	fb := database.MessageQueryFactory.NewFilter(context.Background())
+	f := fb.And(
+		fb.Eq("namespace", "ns1"),
+	)
+	assert.PanicsWithValue(t, "unknown sort type: 100", func() {
+		s.filterSelect(context.Background(), "", sel, f, nil, []interface{}{100})
+	})
+}
+
+func TestILIKE(t *testing.T) {
+	s, _ := newMockProvider().init()
+
+	s.features.UseILIKE = true
+	q := s.newILike("test", "value")
+	sqlString, _, _ := q.ToSql()
+	assert.Regexp(t, "ILIKE", sqlString)
+
+	s.features.UseILIKE = false
+	q = s.newILike("test", "value")
+	sqlString, _, _ = q.ToSql()
+	assert.Regexp(t, "lower\\(test\\)", sqlString)
+}
+
+func TestNotILIKE(t *testing.T) {
+	s, _ := newMockProvider().init()
+
+	s.features.UseILIKE = true
+	q := s.newNotILike("test", "value")
+	sqlString, _, _ := q.ToSql()
+	assert.Regexp(t, "ILIKE", sqlString)
+
+	s.features.UseILIKE = false
+	q = s.newNotILike("test", "value")
+	sqlString, _, _ = q.ToSql()
+	assert.Regexp(t, "lower\\(test\\)", sqlString)
 }

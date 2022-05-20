@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,7 +19,7 @@ package tbd
 import (
 	"context"
 
-	"github.com/hyperledger/firefly/internal/config"
+	"github.com/hyperledger/firefly-common/pkg/config"
 	"github.com/hyperledger/firefly/pkg/identity"
 )
 
@@ -33,7 +33,7 @@ func (tbd *TBD) Name() string {
 	return "onchain" // For backwards compatibility with previous config that might have specified "onchain"
 }
 
-func (tbd *TBD) Init(ctx context.Context, prefix config.Prefix, callbacks identity.Callbacks) (err error) {
+func (tbd *TBD) Init(ctx context.Context, config config.Section, callbacks identity.Callbacks) (err error) {
 	tbd.callbacks = callbacks
 	tbd.capabilities = &identity.Capabilities{}
 	return nil

@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -17,9 +17,15 @@
 package postgres
 
 import (
-	"github.com/hyperledger/firefly/internal/config"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly/internal/database/sqlcommon"
 )
 
-func (psql *Postgres) InitPrefix(prefix config.Prefix) {
-	psql.SQLCommon.InitPrefix(psql, prefix)
+const (
+	defaultConnectionLimitPostgreSQL = 50
+)
+
+func (psql *Postgres) InitConfig(config config.Section) {
+	psql.SQLCommon.InitConfig(psql, config)
+	config.SetDefault(sqlcommon.SQLConfMaxConnections, defaultConnectionLimitPostgreSQL)
 }

@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -20,30 +20,30 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 )
 
 var getMsgByID = &oapispec.Route{
 	Name:   "getMsgByID",
-	Path:   "namespaces/{ns}/messages/{msgid}",
+	Path:   "messages/{msgid}",
 	Method: http.MethodGet,
 	PathParams: []*oapispec.PathParam{
-		{Name: "ns", ExampleFromConf: config.NamespacesDefault, Description: i18n.MsgTBD},
-		{Name: "msgid", Description: i18n.MsgTBD},
+		{Name: "msgid", Description: coremsgs.APIParamsMessageID},
 	},
 	QueryParams: []*oapispec.QueryParam{
-		{Name: "data", IsBool: true, Description: i18n.MsgTBD},
+		{Name: "fetchdata", IsBool: true, Description: coremsgs.APIFetchDataDesc},
 	},
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
+	Description:     coremsgs.APIEndpointsGetMsgByID,
 	JSONInputValue:  nil,
-	JSONOutputValue: func() interface{} { return &fftypes.MessageInOut{} }, // can include full values
+	JSONOutputValue: func() interface{} { return &core.MessageInOut{} }, // can include full values
 	JSONOutputCodes: []int{http.StatusOK},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		output, err = r.Or.GetMessageByID(r.Ctx, r.PP["ns"], r.PP["msgid"], strings.EqualFold(r.QP["data"], "true"))
-		return output, err
+		if strings.EqualFold(r.QP["data"], "true") || strings.EqualFold(r.QP["fetchdata"], "true") {
+			return getOr(r.Ctx).GetMessageByIDWithData(r.Ctx, extractNamespace(r.PP), r.PP["msgid"])
+		}
+		return getOr(r.Ctx).GetMessageByID(r.Ctx, extractNamespace(r.PP), r.PP["msgid"])
 	},
 }

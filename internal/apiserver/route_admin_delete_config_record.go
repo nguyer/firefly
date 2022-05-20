@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,25 +19,25 @@ package apiserver
 import (
 	"net/http"
 
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
 )
 
-var deleteConfigRecord = &oapispec.Route{
-	Name:   "deleteConfigRecord",
+var adminDeleteConfigRecord = &oapispec.Route{
+	Name:   "adminDeleteConfigRecord",
 	Path:   "config/records/{key}",
 	Method: http.MethodDelete,
 	PathParams: []*oapispec.PathParam{
-		{Name: "key", Example: "database", Description: i18n.MsgTBD},
+		{Name: "key", Example: "database", Description: coremsgs.APIParamsConfigRecordKeyUpdate},
 	},
 	QueryParams:     nil,
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
+	Description:     coremsgs.APIEndpointsAdminDeleteConfigRecord,
 	JSONInputValue:  nil,
 	JSONOutputValue: nil,
 	JSONOutputCodes: []int{http.StatusNoContent},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		err = r.Or.DeleteConfigRecord(r.Ctx, r.PP["key"])
+		err = getOr(r.Ctx).DeleteConfigRecord(r.Ctx, r.PP["key"])
 		return nil, err
 	},
 }

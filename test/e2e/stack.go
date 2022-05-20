@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -22,15 +22,26 @@ import (
 )
 
 type Stack struct {
-	Members []*Member `json:"members,omitempty"`
+	Name                  string    `json:"name,omitempty"`
+	ExposedBlockchainPort int       `json:"exposedBlockchainPort,omitempty"`
+	BlockchainProvider    string    `json:"blockchainProvider"`
+	TokenProviders        []string  `json:"tokenProviders"`
+	Members               []*Member `json:"members,omitempty"`
+}
+
+type StackState struct {
+	Accounts []interface{} `json:"accounts"`
 }
 
 type Member struct {
-	ExposedFireflyPort int    `json:"exposedFireflyPort,omitempty"`
-	FireflyHostname    string `json:"fireflyHostname,omitempty"`
-	Username           string `json:"username,omitempty"`
-	Password           string `json:"password,omitempty"`
-	UseHTTPS           bool   `json:"useHttps,omitempty"`
+	ExposedFireflyPort   int         `json:"exposedFireflyPort,omitempty"`
+	FireflyHostname      string      `json:"fireflyHostname,omitempty"`
+	Username             string      `json:"username,omitempty"`
+	Password             string      `json:"password,omitempty"`
+	UseHTTPS             bool        `json:"useHttps,omitempty"`
+	ExposedConnectorPort int         `json:"exposedConnectorPort,omitempty"`
+	OrgName              string      `json:"orgName,omitempty"`
+	Account              interface{} `json:"account,omitempty"`
 }
 
 func GetMemberPort(filename string, n int) (int, error) {
@@ -84,4 +95,19 @@ func ReadStack(filename string) (*Stack, error) {
 	}
 
 	return stack, nil
+}
+
+func ReadStackState(filename string) (*StackState, error) {
+	jsonBytes, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	var stackState *StackState
+	err = json.Unmarshal(jsonBytes, &stackState)
+	if err != nil {
+		return nil, err
+	}
+
+	return stackState, nil
 }

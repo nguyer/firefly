@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,26 +19,26 @@ package apiserver
 import (
 	"net/http"
 
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 )
 
 var getNetworkOrg = &oapispec.Route{
 	Name:   "getNetworkOrg",
-	Path:   "network/organizations/{oid}",
+	Path:   "network/organizations/{nameOrId}",
 	Method: http.MethodGet,
 	PathParams: []*oapispec.PathParam{
-		{Name: "oid", Description: i18n.MsgTBD},
+		{Name: "nameOrId", Description: coremsgs.APIParamsOrgNameOrID},
 	},
 	QueryParams:     nil,
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
+	Description:     coremsgs.APIEndpointsGetNetworkOrg,
 	JSONInputValue:  nil,
-	JSONOutputValue: func() interface{} { return &fftypes.Organization{} },
+	JSONOutputValue: func() interface{} { return &core.Identity{} },
 	JSONOutputCodes: []int{http.StatusOK},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		output, err = r.Or.NetworkMap().GetOrganizationByID(r.Ctx, r.PP["oid"])
+		output, err = getOr(r.Ctx).NetworkMap().GetOrganizationByNameOrID(r.Ctx, r.PP["nameOrId"])
 		return output, err
 	},
 }

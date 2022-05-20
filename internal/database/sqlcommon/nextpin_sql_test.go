@@ -23,9 +23,10 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -37,7 +38,7 @@ func TestNextPinsE2EWithDB(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a new nextpin entry
-	nextpin := &fftypes.NextPin{
+	nextpin := &core.NextPin{
 		Context:  fftypes.NewRandB32(),
 		Identity: "0x12345",
 		Hash:     fftypes.NewRandB32(),
@@ -55,7 +56,7 @@ func TestNextPinsE2EWithDB(t *testing.T) {
 	assert.Equal(t, string(nextpinJson), string(nextpinReadJson))
 
 	// Attempt with wrong ID
-	var nextpinUpdated fftypes.NextPin
+	var nextpinUpdated core.NextPin
 	nextpinUpdated = *nextpin
 	nextpinUpdated.Nonce = 1111111
 	nextpinUpdated.Hash = fftypes.NewRandB32()
@@ -98,7 +99,7 @@ func TestNextPinsE2EWithDB(t *testing.T) {
 func TestUpsertNextPinFailBegin(t *testing.T) {
 	s, mock := newMockProvider().init()
 	mock.ExpectBegin().WillReturnError(fmt.Errorf("pop"))
-	err := s.InsertNextPin(context.Background(), &fftypes.NextPin{})
+	err := s.InsertNextPin(context.Background(), &core.NextPin{})
 	assert.Regexp(t, "FF10114", err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -108,7 +109,7 @@ func TestUpsertNextPinFailInsert(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT .*").WillReturnError(fmt.Errorf("pop"))
 	mock.ExpectRollback()
-	err := s.InsertNextPin(context.Background(), &fftypes.NextPin{Context: fftypes.NewRandB32()})
+	err := s.InsertNextPin(context.Background(), &core.NextPin{Context: fftypes.NewRandB32()})
 	assert.Regexp(t, "FF10116", err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -118,7 +119,7 @@ func TestUpsertNextPinFailCommit(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT .*").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit().WillReturnError(fmt.Errorf("pop"))
-	err := s.InsertNextPin(context.Background(), &fftypes.NextPin{Context: fftypes.NewRandB32()})
+	err := s.InsertNextPin(context.Background(), &core.NextPin{Context: fftypes.NewRandB32()})
 	assert.Regexp(t, "FF10119", err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -161,7 +162,7 @@ func TestGetNextPinBuildQueryFail(t *testing.T) {
 	s, _ := newMockProvider().init()
 	f := database.NextPinQueryFactory.NewFilter(context.Background()).Eq("context", map[bool]bool{true: false})
 	_, _, err := s.GetNextPins(context.Background(), f)
-	assert.Regexp(t, "FF10149.*type", err)
+	assert.Regexp(t, "FF00143.*type", err)
 }
 
 func TestGetNextPinReadMessageFail(t *testing.T) {
@@ -186,7 +187,7 @@ func TestNextPinUpdateBuildQueryFail(t *testing.T) {
 	mock.ExpectBegin()
 	u := database.NextPinQueryFactory.NewUpdate(context.Background()).Set("context", map[bool]bool{true: false})
 	err := s.UpdateNextPin(context.Background(), 12345, u)
-	assert.Regexp(t, "FF10149.*context", err)
+	assert.Regexp(t, "FF00143.*context", err)
 }
 
 func TestNextPinUpdateFail(t *testing.T) {

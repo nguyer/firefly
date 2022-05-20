@@ -1,4 +1,3 @@
-DELETE FROM tokenaccount;
 ALTER TABLE tokenaccount ADD COLUMN connector VARCHAR(64);
 ALTER TABLE tokentransfer ADD COLUMN connector VARCHAR(64);
 
@@ -9,3 +8,6 @@ UPDATE tokenaccount SET connector = pool.connector
 UPDATE tokentransfer SET connector = pool.connector
   FROM (SELECT protocol_id, connector FROM tokenpool) AS pool
   WHERE tokentransfer.pool_protocol_id = pool.protocol_id;
+
+DROP INDEX tokentransfer_protocolid;
+CREATE UNIQUE INDEX tokentransfer_protocolid ON tokentransfer(connector,protocol_id);

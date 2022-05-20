@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,28 +19,26 @@ package apiserver
 import (
 	"net/http"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 )
 
 var getSubscriptionByID = &oapispec.Route{
 	Name:   "getSubscriptionByID",
-	Path:   "namespaces/{ns}/subscriptions/{subid}",
+	Path:   "subscriptions/{subid}",
 	Method: http.MethodGet,
 	PathParams: []*oapispec.PathParam{
-		{Name: "ns", ExampleFromConf: config.NamespacesDefault, Description: i18n.MsgTBD},
-		{Name: "subid", Description: i18n.MsgTBD},
+		{Name: "subid", Description: coremsgs.APIParamsSubscriptionID},
 	},
 	QueryParams:     nil,
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
+	Description:     coremsgs.APIEndpointsGetSubscriptionByID,
 	JSONInputValue:  nil,
-	JSONOutputValue: func() interface{} { return &fftypes.Subscription{} },
+	JSONOutputValue: func() interface{} { return &core.Subscription{} },
 	JSONOutputCodes: []int{http.StatusOK},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		output, err = r.Or.GetSubscriptionByID(r.Ctx, r.PP["ns"], r.PP["subid"])
+		output, err = getOr(r.Ctx).GetSubscriptionByID(r.Ctx, extractNamespace(r.PP), r.PP["subid"])
 		return output, err
 	},
 }

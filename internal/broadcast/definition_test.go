@@ -20,23 +20,86 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/hyperledger/firefly/mocks/databasemocks"
+	"github.com/hyperledger/firefly/internal/identity"
 	"github.com/hyperledger/firefly/mocks/identitymanagermocks"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/mocks/syncasyncmocks"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-func TestBroadcastDefinitionAsNodeUpsertFail(t *testing.T) {
+func TestBroadcastDefinitionAsNodeConfirm(t *testing.T) {
 	bm, cancel := newTestBroadcast(t)
 	defer cancel()
 
-	mdi := bm.database.(*databasemocks.Plugin)
-	mdi.On("UpsertData", mock.Anything, mock.Anything, true, false).Return(fmt.Errorf("pop"))
+	msa := bm.syncasync.(*syncasyncmocks.Bridge)
 	mim := bm.identity.(*identitymanagermocks.Manager)
-	mim.On("ResolveInputIdentity", mock.Anything, mock.Anything).Return(nil)
-	_, err := bm.BroadcastDefinitionAsNode(bm.ctx, &fftypes.Namespace{}, fftypes.SystemTagDefineNamespace, false)
-	assert.Regexp(t, "pop", err)
+
+	mim.On("ResolveInputSigningIdentity", mock.Anything, "ff_system", mock.Anything).Return(nil)
+	msa.On("WaitForMessage", bm.ctx, "ff_system", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("pop"))
+
+	_, err := bm.BroadcastDefinitionAsNode(bm.ctx, core.SystemNamespace, &core.Namespace{}, core.SystemTagDefineNamespace, true)
+	assert.EqualError(t, err, "pop")
+
+	msa.AssertExpectations(t)
+	mim.AssertExpectations(t)
+}
+
+func TestBroadcastIdentityClaim(t *testing.T) {
+	bm, cancel := newTestBroadcast(t)
+	defer cancel()
+
+	msa := bm.syncasync.(*syncasyncmocks.Bridge)
+	mim := bm.identity.(*identitymanagermocks.Manager)
+
+	mim.On("NormalizeSigningKey", mock.Anything, "0x1234", identity.KeyNormalizationBlockchainPlugin).Return("", nil)
+	msa.On("WaitForMessage", bm.ctx, "ff_system", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("pop"))
+
+	_, err := bm.BroadcastIdentityClaim(bm.ctx, core.SystemNamespace, &core.IdentityClaim{
+		Identity: &core.Identity{},
+	}, &core.SignerRef{
+		Key: "0x1234",
+	}, core.SystemTagDefineNamespace, true)
+	assert.EqualError(t, err, "pop")
+
+	msa.AssertExpectations(t)
+	mim.AssertExpectations(t)
+}
+
+func TestBroadcastIdentityClaimFail(t *testing.T) {
+	bm, cancel := newTestBroadcast(t)
+	defer cancel()
+
+	mim := bm.identity.(*identitymanagermocks.Manager)
+
+	mim.On("NormalizeSigningKey", mock.Anything, "0x1234", identity.KeyNormalizationBlockchainPlugin).Return("", fmt.Errorf("pop"))
+
+	_, err := bm.BroadcastIdentityClaim(bm.ctx, core.SystemNamespace, &core.IdentityClaim{
+		Identity: &core.Identity{},
+	}, &core.SignerRef{
+		Key: "0x1234",
+	}, core.SystemTagDefineNamespace, true)
+	assert.EqualError(t, err, "pop")
+
+	mim.AssertExpectations(t)
+}
+
+func TestBroadcastDatatypeDefinitionAsNodeConfirm(t *testing.T) {
+	bm, cancel := newTestBroadcast(t)
+	defer cancel()
+
+	msa := bm.syncasync.(*syncasyncmocks.Bridge)
+	mim := bm.identity.(*identitymanagermocks.Manager)
+	ns := "customNamespace"
+
+	mim.On("ResolveInputSigningIdentity", mock.Anything, ns, mock.Anything).Return(nil)
+	msa.On("WaitForMessage", bm.ctx, ns, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("pop"))
+
+	_, err := bm.BroadcastDefinitionAsNode(bm.ctx, ns, &core.Datatype{}, core.SystemTagDefineNamespace, true)
+	assert.EqualError(t, err, "pop")
+
+	msa.AssertExpectations(t)
+	mim.AssertExpectations(t)
 }
 
 func TestBroadcastDefinitionBadIdentity(t *testing.T) {
@@ -44,31 +107,10 @@ func TestBroadcastDefinitionBadIdentity(t *testing.T) {
 	defer cancel()
 
 	mim := bm.identity.(*identitymanagermocks.Manager)
-	mim.On("ResolveInputIdentity", mock.Anything, mock.Anything).Return(fmt.Errorf("pop"))
-	_, err := bm.BroadcastDefinition(bm.ctx, &fftypes.Namespace{}, &fftypes.Identity{
+	mim.On("ResolveInputSigningIdentity", mock.Anything, core.SystemNamespace, mock.Anything).Return(fmt.Errorf("pop"))
+	_, err := bm.BroadcastDefinition(bm.ctx, core.SystemNamespace, &core.Namespace{}, &core.SignerRef{
 		Author: "wrong",
 		Key:    "wrong",
-	}, fftypes.SystemTagDefineNamespace, false)
+	}, core.SystemTagDefineNamespace, false)
 	assert.Regexp(t, "pop", err)
-}
-
-func TestBroadcastRootOrgDefinitionPassedThroughAnyIdentity(t *testing.T) {
-	bm, cancel := newTestBroadcast(t)
-	defer cancel()
-
-	mim := bm.identity.(*identitymanagermocks.Manager)
-	mim.On("OrgDID", mock.Anything, mock.Anything).Return("did:firefly:org/12345", nil)
-	// Should call through to upsert data, stop test there
-	mdi := bm.database.(*databasemocks.Plugin)
-	mdi.On("UpsertData", mock.Anything, mock.Anything, true, false).Return(fmt.Errorf("pop"))
-
-	_, err := bm.BroadcastRootOrgDefinition(bm.ctx, &fftypes.Organization{
-		ID: fftypes.NewUUID(),
-	}, &fftypes.Identity{
-		Author: "anything - overridden",
-		Key:    "0x12345",
-	}, fftypes.SystemTagDefineNamespace, false)
-	assert.Regexp(t, "pop", err)
-
-	mim.AssertExpectations(t)
 }

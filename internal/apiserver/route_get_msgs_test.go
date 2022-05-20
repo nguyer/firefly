@@ -21,8 +21,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -34,7 +34,7 @@ func TestGetMessages(t *testing.T) {
 	res := httptest.NewRecorder()
 
 	o.On("GetMessages", mock.Anything, "mynamespace", mock.Anything).
-		Return([]*fftypes.Message{}, nil, nil)
+		Return([]*core.Message{}, nil, nil)
 	r.ServeHTTP(res, req)
 
 	assert.Equal(t, 200, res.Result().StatusCode)
@@ -48,7 +48,29 @@ func TestGetMessagesWithCount(t *testing.T) {
 
 	var ten int64 = 10
 	o.On("GetMessages", mock.Anything, "mynamespace", mock.Anything).
-		Return([]*fftypes.Message{}, &database.FilterResult{
+		Return([]*core.Message{}, &database.FilterResult{
+			TotalCount: &ten,
+		}, nil)
+	r.ServeHTTP(res, req)
+
+	assert.Equal(t, 200, res.Result().StatusCode)
+	var resWithCount filterResultsWithCount
+	err := json.NewDecoder(res.Body).Decode(&resWithCount)
+	assert.NoError(t, err)
+	assert.NotNil(t, resWithCount.Items)
+	assert.Equal(t, int64(0), resWithCount.Count)
+	assert.Equal(t, int64(10), resWithCount.Total)
+}
+
+func TestGetMessagesWithCountAndData(t *testing.T) {
+	o, r := newTestAPIServer()
+	req := httptest.NewRequest("GET", "/api/v1/namespaces/mynamespace/messages?count&fetchdata", nil)
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	res := httptest.NewRecorder()
+
+	var ten int64 = 10
+	o.On("GetMessagesWithData", mock.Anything, "mynamespace", mock.Anything).
+		Return([]*core.MessageInOut{}, &database.FilterResult{
 			TotalCount: &ten,
 		}, nil)
 	r.ServeHTTP(res, req)

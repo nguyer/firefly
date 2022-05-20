@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,9 +19,9 @@ package orchestrator
 import (
 	"context"
 
-	"github.com/hyperledger/firefly/internal/config"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 func (or *orchestrator) GetConfig(ctx context.Context) fftypes.JSONObject {
@@ -36,7 +36,7 @@ func (or *orchestrator) GetConfigRecords(ctx context.Context, filter database.An
 	return or.database.GetConfigRecords(ctx, filter)
 }
 
-func (or *orchestrator) PutConfigRecord(ctx context.Context, key string, value fftypes.Byteable) (outputValue fftypes.Byteable, err error) {
+func (or *orchestrator) PutConfigRecord(ctx context.Context, key string, value *fftypes.JSONAny) (outputValue *fftypes.JSONAny, err error) {
 	configRecord := &fftypes.ConfigRecord{
 		Key:   key,
 		Value: value,

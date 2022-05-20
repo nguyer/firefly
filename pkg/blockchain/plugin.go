@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,20 +19,22 @@ package blockchain
 import (
 	"context"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly/internal/metrics"
+	"github.com/hyperledger/firefly/pkg/core"
 )
 
 // Plugin is the interface implemented by each blockchain plugin
 type Plugin interface {
-	fftypes.Named
+	core.Named
 
-	// InitPrefix initializes the set of configuration options that are valid, with defaults. Called on all plugins.
-	InitPrefix(prefix config.Prefix)
+	// InitConfig initializes the set of configuration options that are valid, with defaults. Called on all plugins.
+	InitConfig(config config.Section)
 
 	// Init initializes the plugin, with configuration
 	// Returns the supported featureset of the interface
-	Init(ctx context.Context, prefix config.Prefix, callbacks Callbacks) error
+	Init(ctx context.Context, config config.Section, callbacks Callbacks, metrics metrics.Manager) error
 
 	// Blockchain interface must not deliver any events until start is called
 	Start() error
@@ -40,12 +42,40 @@ type Plugin interface {
 	// Capabilities returns capabilities - not called until after Init
 	Capabilities() *Capabilities
 
-	// ResolveSigningKey verifies that the supplied identity string is valid syntax according to the protocol.
-	// Can apply transformations to the supplied signing identity (only), such as lower case
-	ResolveSigningKey(ctx context.Context, signingKey string) (string, error)
+	// VerifierType returns the verifier (key) type that is used by this blockchain
+	VerifierType() core.VerifierType
+
+	// NormalizeSigningKey verifies that the supplied identity string is valid syntax according to the protocol.
+	// - Can apply transformations to the supplied signing identity (only), such as lower case.
+	// - Can perform sophisicated resolution, such as resolving a Fabric shortname to a MSP ID, or using an external REST API plugin to resolve a HD wallet address
+	NormalizeSigningKey(ctx context.Context, keyRef string) (string, error)
 
 	// SubmitBatchPin sequences a batch of message globally to all viewers of a given ledger
-	SubmitBatchPin(ctx context.Context, operationID *fftypes.UUID, ledgerID *fftypes.UUID, signingKey string, batch *BatchPin) error
+	SubmitBatchPin(ctx context.Context, operationID *fftypes.UUID, signingKey string, batch *BatchPin) error
+
+	// InvokeContract submits a new transaction to be executed by custom on-chain logic
+	InvokeContract(ctx context.Context, operationID *fftypes.UUID, signingKey string, location *fftypes.JSONAny, method *core.FFIMethod, input map[string]interface{}) error
+
+	// QueryContract executes a method via custom on-chain logic and returns the result
+	QueryContract(ctx context.Context, location *fftypes.JSONAny, method *core.FFIMethod, input map[string]interface{}) (interface{}, error)
+
+	// AddContractListener adds a new subscription to a user-specified contract and event
+	AddContractListener(ctx context.Context, subscription *core.ContractListenerInput) error
+
+	// DeleteContractListener deletes a previously-created subscription
+	DeleteContractListener(ctx context.Context, subscription *core.ContractListener) error
+
+	// GetFFIParamValidator returns a blockchain-plugin-specific validator for FFIParams and their JSON Schema
+	GetFFIParamValidator(ctx context.Context) (core.FFIParamValidator, error)
+
+	// GenerateFFI returns an FFI from a blockchain specific interface format e.g. an Ethereum ABI
+	GenerateFFI(ctx context.Context, generationRequest *core.FFIGenerationRequest) (*core.FFI, error)
+
+	// NormalizeContractLocation validates and normalizes the formatting of the location JSON
+	NormalizeContractLocation(ctx context.Context, location *fftypes.JSONAny) (*fftypes.JSONAny, error)
+
+	// GenerateEventSignature generates a strigified signature for the event, incorporating any fields significant to identifying the event as unique
+	GenerateEventSignature(ctx context.Context, event *core.FFIEventDefinition) string
 }
 
 // Callbacks is the interface provided to the blockchain plugin, to allow it to pass events back to firefly.
@@ -61,29 +91,26 @@ type Callbacks interface {
 	// Only the party submitting the transaction will see this data.
 	//
 	// Error should will only be returned in shutdown scenarios
-	BlockchainOpUpdate(operationID *fftypes.UUID, txState TransactionStatus, errorMessage string, opOutput fftypes.JSONObject) error
+	BlockchainOpUpdate(plugin Plugin, operationID *fftypes.UUID, txState TransactionStatus, blockchainTXID, errorMessage string, opOutput fftypes.JSONObject)
 
 	// BatchPinComplete notifies on the arrival of a sequenced batch of messages, which might have been
 	// submitted by us, or by any other authorized party in the network.
-	// Will be combined with he index within the batch, to allocate a sequence to each message in the batch.
-	// For example a padded block number, followed by a padded transaction index within that block.
-	// additionalInfo can be used to add opaque protocol specific JSON from the plugin (block numbers etc.)
 	//
 	// Error should will only be returned in shutdown scenarios
-	BatchPinComplete(batch *BatchPin, signingIdentity string, protocolTxID string, additionalInfo fftypes.JSONObject) error
+	BatchPinComplete(batch *BatchPin, signingKey *core.VerifierRef) error
+
+	// BlockchainEvent notifies on the arrival of any event from a user-created subscription.
+	BlockchainEvent(event *EventWithSubscription) error
 }
 
 // Capabilities the supported featureset of the blockchain
 // interface implemented by the plugin, with the specified config
 type Capabilities struct {
-	// GlobalSequencer means submitting an ordered piece of data visible to all
-	// participants of the network (requires an all-participant chain)
-	GlobalSequencer bool
 }
 
 // TransactionStatus is the only architecturally significant thing that Firefly tracks on blockchain transactions.
 // All other data is consider protocol specific, and hence stored as opaque data.
-type TransactionStatus = fftypes.OpStatus
+type TransactionStatus = core.OpStatus
 
 // BatchPin is the set of data pinned to the blockchain for a batch - whether it's private or broadcast.
 type BatchPin struct {
@@ -100,8 +127,8 @@ type BatchPin struct {
 	// BatchHash is the SHA256 hash of the batch
 	BatchHash *fftypes.Bytes32
 
-	// BatchPaylodRef is a string that can be passed to to the storage interface to retrieve the payload. Nil for private messages
-	BatchPaylodRef string
+	// BatchPayloadRef is a string that can be passed to to the storage interface to retrieve the payload. Nil for private messages
+	BatchPayloadRef string
 
 	// Contexts is an array of hashes that allow the FireFly runtimes to identify whether one of the messgages in
 	// that batch is the next message for a sequence that involves that node. If so that means the FireFly runtime must
@@ -110,7 +137,7 @@ type BatchPin struct {
 	// - The context is a function of:
 	//   - A single topic declared in a message - topics are just a string representing a sequence of events that must be processed in order
 	//   - A ledger - everone with access to this ledger will see these hashes (Fabric channel, Ethereum chain, EEA privacy group, Corda linear ID)
-	//   - A restricted group - if the mesage is private, these are the nodes that are elible to receive a copy of the private message+data
+	//   - A restricted group - if the mesage is private, these are the nodes that are eligible to receive a copy of the private message+data
 	// - Each message might choose to include multiple topics (and hence attach to multiple contexts)
 	//   - This allows multiple contexts to merge - very important in multi-party data matching scenarios
 	// - A batch contains many messages, each with one or more topics
@@ -118,7 +145,47 @@ type BatchPin struct {
 	// - For private group communications, the hash is augmented as follow:
 	//   - The hashes are salted with a UUID that is only passed off chain (the UUID of the Group).
 	//   - The hashes are made unique to the sender
-	//   - The hashes contain a sender specific nonce that is a monotomically increasing number
+	//   - The hashes contain a sender specific nonce that is a monotonically increasing number
 	//     for batches sent by that sender, within the context (maintined by the sender FireFly node)
 	Contexts []*fftypes.Bytes32
+
+	// Event contains info on the underlying blockchain event for this batch pin
+	Event Event
+}
+
+type Event struct {
+	// Source indicates where the event originated (ie plugin name)
+	Source string
+
+	// Name is a short name for the event
+	Name string
+
+	// ProtocolID is a protocol-specific identifier for the event
+	ProtocolID string
+
+	// Output is the raw output data from the event
+	Output fftypes.JSONObject
+
+	// Info is any additional blockchain info for the event (transaction hash, block number, etc)
+	Info fftypes.JSONObject
+
+	// Timestamp is the time the event was emitted from the blockchain
+	Timestamp *fftypes.FFTime
+
+	// We capture the blockchain TXID as in the case
+	// of a FireFly transaction we want to reflect that blockchain TX back onto the FireFly TX object
+	BlockchainTXID string
+
+	// Location is the blockchain location of the contract that emitted the event
+	Location string
+
+	// Signature is the event signature, including the event name and output types
+	Signature string
+}
+
+type EventWithSubscription struct {
+	Event
+
+	// Subscription is the ID assigned to a custom contract subscription by the connector
+	Subscription string
 }

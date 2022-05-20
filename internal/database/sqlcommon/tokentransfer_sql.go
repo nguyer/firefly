@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -21,52 +21,63 @@ import (
 	"database/sql"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 var (
 	tokenTransferColumns = []string{
 		"type",
 		"local_id",
-		"pool_protocol_id",
+		"pool_id",
 		"token_index",
+		"uri",
 		"connector",
+		"namespace",
 		"key",
 		"from_key",
 		"to_key",
 		"amount",
 		"protocol_id",
+		"message_id",
 		"message_hash",
 		"tx_type",
 		"tx_id",
+		"blockchain_event",
 		"created",
 	}
 	tokenTransferFilterFieldMap = map[string]string{
-		"localid":          "local_id",
-		"poolprotocolid":   "pool_protocol_id",
-		"tokenindex":       "token_index",
-		"from":             "from_key",
-		"to":               "to_key",
-		"protocolid":       "protocol_id",
-		"messagehash":      "message_hash",
-		"transaction.type": "tx_type",
-		"transaction.id":   "tx_id",
+		"type":            "type",
+		"localid":         "local_id",
+		"pool":            "pool_id",
+		"tokenindex":      "token_index",
+		"from":            "from_key",
+		"to":              "to_key",
+		"protocolid":      "protocol_id",
+		"message":         "message_id",
+		"messagehash":     "message_hash",
+		"tx.type":         "tx_type",
+		"tx.id":           "tx_id",
+		"blockchainevent": "blockchain_event",
 	}
 )
 
-func (s *SQLCommon) UpsertTokenTransfer(ctx context.Context, transfer *fftypes.TokenTransfer) (err error) {
+const tokentransferTable = "tokentransfer"
+
+func (s *SQLCommon) UpsertTokenTransfer(ctx context.Context, transfer *core.TokenTransfer) (err error) {
 	ctx, tx, autoCommit, err := s.beginOrUseTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	rows, _, err := s.queryTx(ctx, tx,
+	rows, _, err := s.queryTx(ctx, tokentransferTable, tx,
 		sq.Select("seq").
-			From("tokentransfer").
+			From(tokentransferTable).
 			Where(sq.Eq{"protocol_id": transfer.ProtocolID}),
 	)
 	if err != nil {
@@ -76,50 +87,58 @@ func (s *SQLCommon) UpsertTokenTransfer(ctx context.Context, transfer *fftypes.T
 	rows.Close()
 
 	if existing {
-		if err = s.updateTx(ctx, tx,
-			sq.Update("tokentransfer").
+		if _, err = s.updateTx(ctx, tokentransferTable, tx,
+			sq.Update(tokentransferTable).
 				Set("type", transfer.Type).
 				Set("local_id", transfer.LocalID).
-				Set("pool_protocol_id", transfer.PoolProtocolID).
+				Set("pool_id", transfer.Pool).
 				Set("token_index", transfer.TokenIndex).
+				Set("uri", transfer.URI).
 				Set("connector", transfer.Connector).
+				Set("namespace", transfer.Namespace).
 				Set("key", transfer.Key).
 				Set("from_key", transfer.From).
 				Set("to_key", transfer.To).
 				Set("amount", transfer.Amount).
+				Set("message_id", transfer.Message).
 				Set("message_hash", transfer.MessageHash).
 				Set("tx_type", transfer.TX.Type).
 				Set("tx_id", transfer.TX.ID).
+				Set("blockchain_event", transfer.BlockchainEvent).
 				Where(sq.Eq{"protocol_id": transfer.ProtocolID}),
 			func() {
-				s.callbacks.UUIDCollectionEvent(database.CollectionTokenTransfers, fftypes.ChangeEventTypeUpdated, transfer.LocalID)
+				s.callbacks.UUIDCollectionNSEvent(database.CollectionTokenTransfers, core.ChangeEventTypeUpdated, transfer.Namespace, transfer.LocalID)
 			},
 		); err != nil {
 			return err
 		}
 	} else {
 		transfer.Created = fftypes.Now()
-		if _, err = s.insertTx(ctx, tx,
-			sq.Insert("tokentransfer").
+		if _, err = s.insertTx(ctx, tokentransferTable, tx,
+			sq.Insert(tokentransferTable).
 				Columns(tokenTransferColumns...).
 				Values(
 					transfer.Type,
 					transfer.LocalID,
-					transfer.PoolProtocolID,
+					transfer.Pool,
 					transfer.TokenIndex,
+					transfer.URI,
 					transfer.Connector,
+					transfer.Namespace,
 					transfer.Key,
 					transfer.From,
 					transfer.To,
 					transfer.Amount,
 					transfer.ProtocolID,
+					transfer.Message,
 					transfer.MessageHash,
 					transfer.TX.Type,
 					transfer.TX.ID,
+					transfer.BlockchainEvent,
 					transfer.Created,
 				),
 			func() {
-				s.callbacks.UUIDCollectionEvent(database.CollectionTokenTransfers, fftypes.ChangeEventTypeCreated, transfer.LocalID)
+				s.callbacks.UUIDCollectionNSEvent(database.CollectionTokenTransfers, core.ChangeEventTypeCreated, transfer.Namespace, transfer.LocalID)
 			},
 		); err != nil {
 			return err
@@ -129,34 +148,38 @@ func (s *SQLCommon) UpsertTokenTransfer(ctx context.Context, transfer *fftypes.T
 	return s.commitTx(ctx, tx, autoCommit)
 }
 
-func (s *SQLCommon) tokenTransferResult(ctx context.Context, row *sql.Rows) (*fftypes.TokenTransfer, error) {
-	transfer := fftypes.TokenTransfer{}
+func (s *SQLCommon) tokenTransferResult(ctx context.Context, row *sql.Rows) (*core.TokenTransfer, error) {
+	transfer := core.TokenTransfer{}
 	err := row.Scan(
 		&transfer.Type,
 		&transfer.LocalID,
-		&transfer.PoolProtocolID,
+		&transfer.Pool,
 		&transfer.TokenIndex,
+		&transfer.URI,
 		&transfer.Connector,
+		&transfer.Namespace,
 		&transfer.Key,
 		&transfer.From,
 		&transfer.To,
 		&transfer.Amount,
 		&transfer.ProtocolID,
+		&transfer.Message,
 		&transfer.MessageHash,
 		&transfer.TX.Type,
 		&transfer.TX.ID,
+		&transfer.BlockchainEvent,
 		&transfer.Created,
 	)
 	if err != nil {
-		return nil, i18n.WrapError(ctx, err, i18n.MsgDBReadErr, "tokentransfer")
+		return nil, i18n.WrapError(ctx, err, coremsgs.MsgDBReadErr, tokentransferTable)
 	}
 	return &transfer, nil
 }
 
-func (s *SQLCommon) getTokenTransferPred(ctx context.Context, desc string, pred interface{}) (*fftypes.TokenTransfer, error) {
-	rows, _, err := s.query(ctx,
+func (s *SQLCommon) getTokenTransferPred(ctx context.Context, desc string, pred interface{}) (*core.TokenTransfer, error) {
+	rows, _, err := s.query(ctx, tokentransferTable,
 		sq.Select(tokenTransferColumns...).
-			From("tokentransfer").
+			From(tokentransferTable).
 			Where(pred),
 	)
 	if err != nil {
@@ -177,23 +200,30 @@ func (s *SQLCommon) getTokenTransferPred(ctx context.Context, desc string, pred 
 	return transfer, nil
 }
 
-func (s *SQLCommon) GetTokenTransfer(ctx context.Context, localID *fftypes.UUID) (*fftypes.TokenTransfer, error) {
+func (s *SQLCommon) GetTokenTransferByID(ctx context.Context, localID *fftypes.UUID) (*core.TokenTransfer, error) {
 	return s.getTokenTransferPred(ctx, localID.String(), sq.Eq{"local_id": localID})
 }
 
-func (s *SQLCommon) GetTokenTransfers(ctx context.Context, filter database.Filter) (message []*fftypes.TokenTransfer, fr *database.FilterResult, err error) {
-	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(tokenTransferColumns...).From("tokentransfer"), filter, tokenTransferFilterFieldMap, []string{"seq"})
+func (s *SQLCommon) GetTokenTransferByProtocolID(ctx context.Context, connector, protocolID string) (*core.TokenTransfer, error) {
+	return s.getTokenTransferPred(ctx, protocolID, sq.And{
+		sq.Eq{"connector": connector},
+		sq.Eq{"protocol_id": protocolID},
+	})
+}
+
+func (s *SQLCommon) GetTokenTransfers(ctx context.Context, filter database.Filter) (message []*core.TokenTransfer, fr *database.FilterResult, err error) {
+	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(tokenTransferColumns...).From(tokentransferTable), filter, tokenTransferFilterFieldMap, []interface{}{"seq"})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, tx, err := s.query(ctx, query)
+	rows, tx, err := s.query(ctx, tokentransferTable, query)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 
-	transfers := []*fftypes.TokenTransfer{}
+	transfers := []*core.TokenTransfer{}
 	for rows.Next() {
 		d, err := s.tokenTransferResult(ctx, rows)
 		if err != nil {
@@ -202,5 +232,5 @@ func (s *SQLCommon) GetTokenTransfers(ctx context.Context, filter database.Filte
 		transfers = append(transfers, d)
 	}
 
-	return transfers, s.queryRes(ctx, tx, "tokentransfer", fop, fi), err
+	return transfers, s.queryRes(ctx, tokentransferTable, tx, fop, fi), err
 }

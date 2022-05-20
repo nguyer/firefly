@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -21,10 +21,12 @@ import (
 	"database/sql"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 var (
@@ -37,22 +39,24 @@ var (
 		"group_hash",
 		"created",
 		"hash",
-		"payload",
-		"payload_ref",
+		"manifest",
 		"confirmed",
 		"tx_type",
 		"tx_id",
+		"node_id",
 	}
 	batchFilterFieldMap = map[string]string{
-		"type":             "btype",
-		"payloadref":       "payload_ref",
-		"transaction.type": "tx_type",
-		"transaction.id":   "tx_id",
-		"group":            "group_hash",
+		"type":    "btype",
+		"tx.type": "tx_type",
+		"tx.id":   "tx_id",
+		"group":   "group_hash",
+		"node":    "node_id",
 	}
 )
 
-func (s *SQLCommon) UpsertBatch(ctx context.Context, batch *fftypes.Batch, allowHashUpdate bool) (err error) {
+const batchesTable = "batches"
+
+func (s *SQLCommon) UpsertBatch(ctx context.Context, batch *core.BatchPersisted) (err error) {
 	ctx, tx, autoCommit, err := s.beginOrUseTx(ctx)
 	if err != nil {
 		return err
@@ -60,9 +64,9 @@ func (s *SQLCommon) UpsertBatch(ctx context.Context, batch *fftypes.Batch, allow
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
 	// Do a select within the transaction to detemine if the UUID already exists
-	batchRows, _, err := s.queryTx(ctx, tx,
+	batchRows, _, err := s.queryTx(ctx, batchesTable, tx,
 		sq.Select("hash").
-			From("batches").
+			From(batchesTable).
 			Where(sq.Eq{"id": batch.ID}),
 	)
 	if err != nil {
@@ -70,7 +74,7 @@ func (s *SQLCommon) UpsertBatch(ctx context.Context, batch *fftypes.Batch, allow
 	}
 
 	existing := batchRows.Next()
-	if existing && !allowHashUpdate {
+	if existing {
 		var hash *fftypes.Bytes32
 		_ = batchRows.Scan(&hash)
 		if !fftypes.SafeHashCompare(hash, batch.Hash) {
@@ -84,8 +88,8 @@ func (s *SQLCommon) UpsertBatch(ctx context.Context, batch *fftypes.Batch, allow
 	if existing {
 
 		// Update the batch
-		if err = s.updateTx(ctx, tx,
-			sq.Update("batches").
+		if _, err = s.updateTx(ctx, batchesTable, tx,
+			sq.Update(batchesTable).
 				Set("btype", string(batch.Type)).
 				Set("namespace", batch.Namespace).
 				Set("author", batch.Author).
@@ -93,22 +97,22 @@ func (s *SQLCommon) UpsertBatch(ctx context.Context, batch *fftypes.Batch, allow
 				Set("group_hash", batch.Group).
 				Set("created", batch.Created).
 				Set("hash", batch.Hash).
-				Set("payload", batch.Payload).
-				Set("payload_ref", batch.PayloadRef).
+				Set("manifest", batch.Manifest).
 				Set("confirmed", batch.Confirmed).
-				Set("tx_type", batch.Payload.TX.Type).
-				Set("tx_id", batch.Payload.TX.ID).
+				Set("tx_type", batch.TX.Type).
+				Set("tx_id", batch.TX.ID).
+				Set("node_id", batch.Node).
 				Where(sq.Eq{"id": batch.ID}),
 			func() {
-				s.callbacks.UUIDCollectionNSEvent(database.CollectionBatches, fftypes.ChangeEventTypeUpdated, batch.Namespace, batch.ID)
+				s.callbacks.UUIDCollectionNSEvent(database.CollectionBatches, core.ChangeEventTypeUpdated, batch.Namespace, batch.ID)
 			},
 		); err != nil {
 			return err
 		}
 	} else {
 
-		if _, err = s.insertTx(ctx, tx,
-			sq.Insert("batches").
+		if _, err = s.insertTx(ctx, batchesTable, tx,
+			sq.Insert(batchesTable).
 				Columns(batchColumns...).
 				Values(
 					batch.ID,
@@ -119,14 +123,14 @@ func (s *SQLCommon) UpsertBatch(ctx context.Context, batch *fftypes.Batch, allow
 					batch.Group,
 					batch.Created,
 					batch.Hash,
-					batch.Payload,
-					batch.PayloadRef,
+					batch.Manifest,
 					batch.Confirmed,
-					batch.Payload.TX.Type,
-					batch.Payload.TX.ID,
+					batch.TX.Type,
+					batch.TX.ID,
+					batch.Node,
 				),
 			func() {
-				s.callbacks.UUIDCollectionNSEvent(database.CollectionBatches, fftypes.ChangeEventTypeCreated, batch.Namespace, batch.ID)
+				s.callbacks.UUIDCollectionNSEvent(database.CollectionBatches, core.ChangeEventTypeCreated, batch.Namespace, batch.ID)
 			},
 		); err != nil {
 			return err
@@ -136,8 +140,8 @@ func (s *SQLCommon) UpsertBatch(ctx context.Context, batch *fftypes.Batch, allow
 	return s.commitTx(ctx, tx, autoCommit)
 }
 
-func (s *SQLCommon) batchResult(ctx context.Context, row *sql.Rows) (*fftypes.Batch, error) {
-	var batch fftypes.Batch
+func (s *SQLCommon) batchResult(ctx context.Context, row *sql.Rows) (*core.BatchPersisted, error) {
+	var batch core.BatchPersisted
 	err := row.Scan(
 		&batch.ID,
 		&batch.Type,
@@ -147,23 +151,23 @@ func (s *SQLCommon) batchResult(ctx context.Context, row *sql.Rows) (*fftypes.Ba
 		&batch.Group,
 		&batch.Created,
 		&batch.Hash,
-		&batch.Payload,
-		&batch.PayloadRef,
+		&batch.Manifest,
 		&batch.Confirmed,
-		&batch.Payload.TX.Type,
-		&batch.Payload.TX.ID,
+		&batch.TX.Type,
+		&batch.TX.ID,
+		&batch.Node,
 	)
 	if err != nil {
-		return nil, i18n.WrapError(ctx, err, i18n.MsgDBReadErr, "batches")
+		return nil, i18n.WrapError(ctx, err, coremsgs.MsgDBReadErr, batchesTable)
 	}
 	return &batch, nil
 }
 
-func (s *SQLCommon) GetBatchByID(ctx context.Context, id *fftypes.UUID) (message *fftypes.Batch, err error) {
+func (s *SQLCommon) GetBatchByID(ctx context.Context, id *fftypes.UUID) (message *core.BatchPersisted, err error) {
 
-	rows, _, err := s.query(ctx,
+	rows, _, err := s.query(ctx, batchesTable,
 		sq.Select(batchColumns...).
-			From("batches").
+			From(batchesTable).
 			Where(sq.Eq{"id": id}),
 	)
 	if err != nil {
@@ -184,20 +188,20 @@ func (s *SQLCommon) GetBatchByID(ctx context.Context, id *fftypes.UUID) (message
 	return batch, nil
 }
 
-func (s *SQLCommon) GetBatches(ctx context.Context, filter database.Filter) (message []*fftypes.Batch, res *database.FilterResult, err error) {
+func (s *SQLCommon) GetBatches(ctx context.Context, filter database.Filter) (message []*core.BatchPersisted, res *database.FilterResult, err error) {
 
-	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(batchColumns...).From("batches"), filter, batchFilterFieldMap, []string{"sequence"})
+	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(batchColumns...).From(batchesTable), filter, batchFilterFieldMap, []interface{}{"sequence"})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, tx, err := s.query(ctx, query)
+	rows, tx, err := s.query(ctx, batchesTable, query)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 
-	batches := []*fftypes.Batch{}
+	batches := []*core.BatchPersisted{}
 	for rows.Next() {
 		batch, err := s.batchResult(ctx, rows)
 		if err != nil {
@@ -206,7 +210,7 @@ func (s *SQLCommon) GetBatches(ctx context.Context, filter database.Filter) (mes
 		batches = append(batches, batch)
 	}
 
-	return batches, s.queryRes(ctx, tx, "batches", fop, fi), err
+	return batches, s.queryRes(ctx, batchesTable, tx, fop, fi), err
 
 }
 
@@ -218,13 +222,13 @@ func (s *SQLCommon) UpdateBatch(ctx context.Context, id *fftypes.UUID, update da
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	query, err := s.buildUpdate(sq.Update("batches"), update, batchFilterFieldMap)
+	query, err := s.buildUpdate(sq.Update(batchesTable), update, batchFilterFieldMap)
 	if err != nil {
 		return err
 	}
 	query = query.Where(sq.Eq{"id": id})
 
-	err = s.updateTx(ctx, tx, query, nil /* no change events on filter update */)
+	_, err = s.updateTx(ctx, batchesTable, tx, query, nil /* no change events on filter update */)
 	if err != nil {
 		return err
 	}

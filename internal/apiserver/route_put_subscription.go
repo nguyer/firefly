@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,28 +19,24 @@ package apiserver
 import (
 	"net/http"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 )
 
 var putSubscription = &oapispec.Route{
-	Name:   "putSubscription",
-	Path:   "namespaces/{ns}/subscriptions",
-	Method: http.MethodPut,
-	PathParams: []*oapispec.PathParam{
-		{Name: "ns", ExampleFromConf: config.NamespacesDefault, Description: i18n.MsgTBD},
-	},
+	Name:            "putSubscription",
+	Path:            "subscriptions",
+	Method:          http.MethodPut,
+	PathParams:      nil,
 	QueryParams:     nil,
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
-	JSONInputValue:  func() interface{} { return &fftypes.Subscription{} },
-	JSONOutputValue: func() interface{} { return &fftypes.Subscription{} },
+	Description:     coremsgs.APIEndpointsPutSubscription,
+	JSONInputValue:  func() interface{} { return &core.Subscription{} },
+	JSONOutputValue: func() interface{} { return &core.Subscription{} },
 	JSONOutputCodes: []int{http.StatusOK}, // Sync operation
-	JSONInputSchema: newSubscriptionSchemaGenerator,
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		output, err = r.Or.CreateUpdateSubscription(r.Ctx, r.PP["ns"], r.Input.(*fftypes.Subscription))
+		output, err = getOr(r.Ctx).CreateUpdateSubscription(r.Ctx, extractNamespace(r.PP), r.Input.(*core.Subscription))
 		return output, err
 	},
 }

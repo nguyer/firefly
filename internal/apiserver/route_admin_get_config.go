@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,24 +19,24 @@ package apiserver
 import (
 	"net/http"
 
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
-var getConfig = &oapispec.Route{
-	Name:            "getConfig",
+var adminGetConfig = &oapispec.Route{
+	Name:            "adminGetConfig",
 	Path:            "config",
 	Method:          http.MethodGet,
 	PathParams:      nil,
 	QueryParams:     nil,
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
+	Description:     coremsgs.APIEndpointsAdminGetConfig,
 	JSONInputValue:  nil,
 	JSONOutputValue: func() interface{} { return []*fftypes.JSONObject{} },
 	JSONOutputCodes: []int{http.StatusOK},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		output = r.Or.GetConfig(r.Ctx)
+		output = getOr(r.Ctx).GetConfig(r.Ctx)
 		return output, nil
 	},
 }

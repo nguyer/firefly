@@ -24,7 +24,7 @@ import (
 	"github.com/hyperledger/firefly/mocks/databasemocks"
 	"github.com/hyperledger/firefly/mocks/datamocks"
 	"github.com/hyperledger/firefly/mocks/identitymanagermocks"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -34,11 +34,11 @@ func TestBroadcastNamespaceBadName(t *testing.T) {
 	defer cancel()
 	mdi := bm.database.(*databasemocks.Plugin)
 
-	mdi.On("GetNamespace", mock.Anything, mock.Anything).Return(&fftypes.Namespace{Name: "ns1"}, nil)
-	_, err := bm.BroadcastNamespace(context.Background(), &fftypes.Namespace{
+	mdi.On("GetNamespace", mock.Anything, mock.Anything).Return(&core.Namespace{Name: "ns1"}, nil)
+	_, err := bm.BroadcastNamespace(context.Background(), &core.Namespace{
 		Name: "!ns",
 	}, false)
-	assert.Regexp(t, "FF10131.*name", err)
+	assert.Regexp(t, "FF00140.*name", err)
 }
 
 func TestBroadcastNamespaceDescriptionTooLong(t *testing.T) {
@@ -46,17 +46,17 @@ func TestBroadcastNamespaceDescriptionTooLong(t *testing.T) {
 	defer cancel()
 	mdi := bm.database.(*databasemocks.Plugin)
 
-	mdi.On("GetNamespace", mock.Anything, mock.Anything).Return(&fftypes.Namespace{Name: "ns1"}, nil)
+	mdi.On("GetNamespace", mock.Anything, mock.Anything).Return(&core.Namespace{Name: "ns1"}, nil)
 	buff := strings.Builder{}
 	buff.Grow(4097)
 	for i := 0; i < 4097; i++ {
 		buff.WriteByte(byte('a' + i%26))
 	}
-	_, err := bm.BroadcastNamespace(context.Background(), &fftypes.Namespace{
+	_, err := bm.BroadcastNamespace(context.Background(), &core.Namespace{
 		Name:        "ns1",
 		Description: buff.String(),
 	}, false)
-	assert.Regexp(t, "FF10188.*description", err)
+	assert.Regexp(t, "FF00135.*description", err)
 }
 
 func TestBroadcastNamespaceBroadcastOk(t *testing.T) {
@@ -66,17 +66,17 @@ func TestBroadcastNamespaceBroadcastOk(t *testing.T) {
 	mdm := bm.data.(*datamocks.Manager)
 	mim := bm.identity.(*identitymanagermocks.Manager)
 
-	mim.On("ResolveInputIdentity", mock.Anything, mock.Anything).Return(nil)
-	mdi.On("GetNamespace", mock.Anything, mock.Anything).Return(&fftypes.Namespace{Name: "ns1"}, nil)
-	mdi.On("UpsertData", mock.Anything, mock.Anything, true, false).Return(nil)
+	mim.On("ResolveInputSigningIdentity", mock.Anything, core.SystemNamespace, mock.Anything).Return(nil)
+	mdi.On("GetNamespace", mock.Anything, mock.Anything).Return(&core.Namespace{Name: "ns1"}, nil)
 	mdm.On("CheckDatatype", mock.Anything, "ns1", mock.Anything).Return(nil)
-	mdi.On("InsertMessageLocal", mock.Anything, mock.Anything).Return(nil)
+	mdm.On("UpdateMessageCache", mock.Anything, mock.Anything).Return()
+	mdm.On("WriteNewMessage", mock.Anything, mock.Anything).Return(nil)
 	buff := strings.Builder{}
 	buff.Grow(4097)
 	for i := 0; i < 4097; i++ {
 		buff.WriteByte(byte('a' + i%26))
 	}
-	_, err := bm.BroadcastNamespace(context.Background(), &fftypes.Namespace{
+	_, err := bm.BroadcastNamespace(context.Background(), &core.Namespace{
 		Name:        "ns1",
 		Description: "my namespace",
 	}, false)

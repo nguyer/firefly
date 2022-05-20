@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,28 +19,26 @@ package apiserver
 import (
 	"net/http"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 var getDataMsgs = &oapispec.Route{
 	Name:   "getDataMsgs",
-	Path:   "namespaces/{ns}/data/{dataid}/messages",
+	Path:   "data/{dataid}/messages",
 	Method: http.MethodGet,
 	PathParams: []*oapispec.PathParam{
-		{Name: "ns", ExampleFromConf: config.NamespacesDefault, Description: i18n.MsgTBD},
-		{Name: "dataid", Description: i18n.MsgTBD},
+		{Name: "dataid", Description: coremsgs.APIParamsDataID},
 	},
 	QueryParams:     nil,
 	FilterFactory:   database.MessageQueryFactory,
-	Description:     i18n.MsgTBD,
+	Description:     coremsgs.APIEndpointsGetDataMsgs,
 	JSONInputValue:  nil,
-	JSONOutputValue: func() interface{} { return &fftypes.Message{} },
+	JSONOutputValue: func() interface{} { return &core.Message{} },
 	JSONOutputCodes: []int{http.StatusOK},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		return filterResult(r.Or.GetMessagesForData(r.Ctx, r.PP["ns"], r.PP["dataid"], r.Filter))
+		return filterResult(getOr(r.Ctx).GetMessagesForData(r.Ctx, extractNamespace(r.PP), r.PP["dataid"], r.Filter))
 	},
 }

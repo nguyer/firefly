@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,11 +19,12 @@ package data
 import (
 	"context"
 
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 )
 
 type Validator interface {
-	Validate(ctx context.Context, data *fftypes.Data) error
-	ValidateValue(ctx context.Context, value fftypes.Byteable, expectedHash *fftypes.Bytes32) error
+	Validate(ctx context.Context, data *core.Data) error
+	ValidateValue(ctx context.Context, value *fftypes.JSONAny, expectedHash *fftypes.Bytes32) error
 	Size() int64 // for cache management
 }

@@ -5,7 +5,8 @@ package identitymanagermocks
 import (
 	context "context"
 
-	fftypes "github.com/hyperledger/firefly/pkg/fftypes"
+	fftypes "github.com/hyperledger/firefly-common/pkg/fftypes"
+	core "github.com/hyperledger/firefly/pkg/core"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -15,16 +16,145 @@ type Manager struct {
 	mock.Mock
 }
 
-// GetLocalOrganization provides a mock function with given fields: ctx
-func (_m *Manager) GetLocalOrganization(ctx context.Context) (*fftypes.Organization, error) {
+// CachedIdentityLookupByID provides a mock function with given fields: ctx, id
+func (_m *Manager) CachedIdentityLookupByID(ctx context.Context, id *fftypes.UUID) (*core.Identity, error) {
+	ret := _m.Called(ctx, id)
+
+	var r0 *core.Identity
+	if rf, ok := ret.Get(0).(func(context.Context, *fftypes.UUID) *core.Identity); ok {
+		r0 = rf(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*core.Identity)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *fftypes.UUID) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CachedIdentityLookupMustExist provides a mock function with given fields: ctx, did
+func (_m *Manager) CachedIdentityLookupMustExist(ctx context.Context, did string) (*core.Identity, bool, error) {
+	ret := _m.Called(ctx, did)
+
+	var r0 *core.Identity
+	if rf, ok := ret.Get(0).(func(context.Context, string) *core.Identity); ok {
+		r0 = rf(ctx, did)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*core.Identity)
+		}
+	}
+
+	var r1 bool
+	if rf, ok := ret.Get(1).(func(context.Context, string) bool); ok {
+		r1 = rf(ctx, did)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	var r2 error
+	if rf, ok := ret.Get(2).(func(context.Context, string) error); ok {
+		r2 = rf(ctx, did)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// CachedIdentityLookupNilOK provides a mock function with given fields: ctx, did
+func (_m *Manager) CachedIdentityLookupNilOK(ctx context.Context, did string) (*core.Identity, bool, error) {
+	ret := _m.Called(ctx, did)
+
+	var r0 *core.Identity
+	if rf, ok := ret.Get(0).(func(context.Context, string) *core.Identity); ok {
+		r0 = rf(ctx, did)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*core.Identity)
+		}
+	}
+
+	var r1 bool
+	if rf, ok := ret.Get(1).(func(context.Context, string) bool); ok {
+		r1 = rf(ctx, did)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	var r2 error
+	if rf, ok := ret.Get(2).(func(context.Context, string) error); ok {
+		r2 = rf(ctx, did)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// CachedVerifierLookup provides a mock function with given fields: ctx, vType, ns, value
+func (_m *Manager) CachedVerifierLookup(ctx context.Context, vType core.FFEnum, ns string, value string) (*core.Verifier, error) {
+	ret := _m.Called(ctx, vType, ns, value)
+
+	var r0 *core.Verifier
+	if rf, ok := ret.Get(0).(func(context.Context, core.FFEnum, string, string) *core.Verifier); ok {
+		r0 = rf(ctx, vType, ns, value)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*core.Verifier)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, core.FFEnum, string, string) error); ok {
+		r1 = rf(ctx, vType, ns, value)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// FindIdentityForVerifier provides a mock function with given fields: ctx, iTypes, namespace, verifier
+func (_m *Manager) FindIdentityForVerifier(ctx context.Context, iTypes []core.FFEnum, namespace string, verifier *core.VerifierRef) (*core.Identity, error) {
+	ret := _m.Called(ctx, iTypes, namespace, verifier)
+
+	var r0 *core.Identity
+	if rf, ok := ret.Get(0).(func(context.Context, []core.FFEnum, string, *core.VerifierRef) *core.Identity); ok {
+		r0 = rf(ctx, iTypes, namespace, verifier)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*core.Identity)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, []core.FFEnum, string, *core.VerifierRef) error); ok {
+		r1 = rf(ctx, iTypes, namespace, verifier)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetNodeOwnerBlockchainKey provides a mock function with given fields: ctx
+func (_m *Manager) GetNodeOwnerBlockchainKey(ctx context.Context) (*core.VerifierRef, error) {
 	ret := _m.Called(ctx)
 
-	var r0 *fftypes.Organization
-	if rf, ok := ret.Get(0).(func(context.Context) *fftypes.Organization); ok {
+	var r0 *core.VerifierRef
+	if rf, ok := ret.Get(0).(func(context.Context) *core.VerifierRef); ok {
 		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*fftypes.Organization)
+			r0 = ret.Get(0).(*core.VerifierRef)
 		}
 	}
 
@@ -38,57 +168,17 @@ func (_m *Manager) GetLocalOrganization(ctx context.Context) (*fftypes.Organizat
 	return r0, r1
 }
 
-// GetOrgKey provides a mock function with given fields: ctx
-func (_m *Manager) GetOrgKey(ctx context.Context) string {
+// GetNodeOwnerOrg provides a mock function with given fields: ctx
+func (_m *Manager) GetNodeOwnerOrg(ctx context.Context) (*core.Identity, error) {
 	ret := _m.Called(ctx)
 
-	var r0 string
-	if rf, ok := ret.Get(0).(func(context.Context) string); ok {
+	var r0 *core.Identity
+	if rf, ok := ret.Get(0).(func(context.Context) *core.Identity); ok {
 		r0 = rf(ctx)
 	} else {
-		r0 = ret.Get(0).(string)
-	}
-
-	return r0
-}
-
-// OrgDID provides a mock function with given fields: org
-func (_m *Manager) OrgDID(org *fftypes.Organization) string {
-	ret := _m.Called(org)
-
-	var r0 string
-	if rf, ok := ret.Get(0).(func(*fftypes.Organization) string); ok {
-		r0 = rf(org)
-	} else {
-		r0 = ret.Get(0).(string)
-	}
-
-	return r0
-}
-
-// ResolveInputIdentity provides a mock function with given fields: ctx, _a1
-func (_m *Manager) ResolveInputIdentity(ctx context.Context, _a1 *fftypes.Identity) error {
-	ret := _m.Called(ctx, _a1)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *fftypes.Identity) error); ok {
-		r0 = rf(ctx, _a1)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// ResolveLocalOrgDID provides a mock function with given fields: ctx
-func (_m *Manager) ResolveLocalOrgDID(ctx context.Context) (string, error) {
-	ret := _m.Called(ctx)
-
-	var r0 string
-	if rf, ok := ret.Get(0).(func(context.Context) string); ok {
-		r0 = rf(ctx)
-	} else {
-		r0 = ret.Get(0).(string)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*core.Identity)
+		}
 	}
 
 	var r1 error
@@ -101,20 +191,20 @@ func (_m *Manager) ResolveLocalOrgDID(ctx context.Context) (string, error) {
 	return r0, r1
 }
 
-// ResolveSigningKey provides a mock function with given fields: ctx, inputKey
-func (_m *Manager) ResolveSigningKey(ctx context.Context, inputKey string) (string, error) {
-	ret := _m.Called(ctx, inputKey)
+// NormalizeSigningKey provides a mock function with given fields: ctx, namespace, keyNormalizationMode
+func (_m *Manager) NormalizeSigningKey(ctx context.Context, namespace string, keyNormalizationMode int) (string, error) {
+	ret := _m.Called(ctx, namespace, keyNormalizationMode)
 
 	var r0 string
-	if rf, ok := ret.Get(0).(func(context.Context, string) string); ok {
-		r0 = rf(ctx, inputKey)
+	if rf, ok := ret.Get(0).(func(context.Context, string, int) string); ok {
+		r0 = rf(ctx, namespace, keyNormalizationMode)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, inputKey)
+	if rf, ok := ret.Get(1).(func(context.Context, string, int) error); ok {
+		r1 = rf(ctx, namespace, keyNormalizationMode)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -122,23 +212,83 @@ func (_m *Manager) ResolveSigningKey(ctx context.Context, inputKey string) (stri
 	return r0, r1
 }
 
-// ResolveSigningKeyIdentity provides a mock function with given fields: ctx, signingKey
-func (_m *Manager) ResolveSigningKeyIdentity(ctx context.Context, signingKey string) (string, error) {
-	ret := _m.Called(ctx, signingKey)
+// ResolveIdentitySigner provides a mock function with given fields: ctx, _a1
+func (_m *Manager) ResolveIdentitySigner(ctx context.Context, _a1 *core.Identity) (*core.SignerRef, error) {
+	ret := _m.Called(ctx, _a1)
 
-	var r0 string
-	if rf, ok := ret.Get(0).(func(context.Context, string) string); ok {
-		r0 = rf(ctx, signingKey)
+	var r0 *core.SignerRef
+	if rf, ok := ret.Get(0).(func(context.Context, *core.Identity) *core.SignerRef); ok {
+		r0 = rf(ctx, _a1)
 	} else {
-		r0 = ret.Get(0).(string)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*core.SignerRef)
+		}
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, signingKey)
+	if rf, ok := ret.Get(1).(func(context.Context, *core.Identity) error); ok {
+		r1 = rf(ctx, _a1)
 	} else {
 		r1 = ret.Error(1)
 	}
 
 	return r0, r1
+}
+
+// ResolveInputSigningIdentity provides a mock function with given fields: ctx, namespace, msgSignerRef
+func (_m *Manager) ResolveInputSigningIdentity(ctx context.Context, namespace string, msgSignerRef *core.SignerRef) error {
+	ret := _m.Called(ctx, namespace, msgSignerRef)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, *core.SignerRef) error); ok {
+		r0 = rf(ctx, namespace, msgSignerRef)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ResolveNodeOwnerSigningIdentity provides a mock function with given fields: ctx, msgSignerRef
+func (_m *Manager) ResolveNodeOwnerSigningIdentity(ctx context.Context, msgSignerRef *core.SignerRef) error {
+	ret := _m.Called(ctx, msgSignerRef)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *core.SignerRef) error); ok {
+		r0 = rf(ctx, msgSignerRef)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// VerifyIdentityChain provides a mock function with given fields: ctx, _a1
+func (_m *Manager) VerifyIdentityChain(ctx context.Context, _a1 *core.Identity) (*core.Identity, bool, error) {
+	ret := _m.Called(ctx, _a1)
+
+	var r0 *core.Identity
+	if rf, ok := ret.Get(0).(func(context.Context, *core.Identity) *core.Identity); ok {
+		r0 = rf(ctx, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*core.Identity)
+		}
+	}
+
+	var r1 bool
+	if rf, ok := ret.Get(1).(func(context.Context, *core.Identity) bool); ok {
+		r1 = rf(ctx, _a1)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	var r2 error
+	if rf, ok := ret.Get(2).(func(context.Context, *core.Identity) error); ok {
+		r2 = rf(ctx, _a1)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }

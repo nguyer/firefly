@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,29 +19,22 @@ package difactory
 import (
 	"context"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/pkg/database"
 )
 
-var pluginsByName = make(map[string]database.Plugin)
-
-func init() {
-	for _, p := range plugins {
-		pluginsByName[p.Name()] = p
-	}
-}
-
-func InitPrefix(prefix config.Prefix) {
-	for _, plugin := range plugins {
-		plugin.InitPrefix(prefix.SubPrefix(plugin.Name()))
+func InitConfig(config config.Section) {
+	for name, plugin := range pluginsByName {
+		plugin().InitConfig(config.SubSection(name))
 	}
 }
 
 func GetPlugin(ctx context.Context, pluginType string) (database.Plugin, error) {
 	plugin, ok := pluginsByName[pluginType]
 	if !ok {
-		return nil, i18n.NewError(ctx, i18n.MsgUnknownDatabasePlugin, pluginType)
+		return nil, i18n.NewError(ctx, coremsgs.MsgUnknownDatabasePlugin, pluginType)
 	}
-	return plugin, nil
+	return plugin(), nil
 }

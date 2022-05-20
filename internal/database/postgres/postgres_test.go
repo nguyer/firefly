@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/hyperledger/firefly/internal/config"
+	"github.com/hyperledger/firefly-common/pkg/config"
 	"github.com/hyperledger/firefly/internal/database/sqlcommon"
 	"github.com/hyperledger/firefly/mocks/databasemocks"
 	"github.com/stretchr/testify/assert"
@@ -30,21 +30,22 @@ import (
 func TestPostgresProvider(t *testing.T) {
 	psql := &Postgres{}
 	dcb := &databasemocks.Callbacks{}
-	prefix := config.NewPluginConfig("unittest")
-	psql.InitPrefix(prefix)
-	prefix.Set(sqlcommon.SQLConfDatasourceURL, "!bad connection")
-	err := psql.Init(context.Background(), prefix, dcb)
+	config := config.RootSection("unittest")
+	psql.InitConfig(config)
+	config.Set(sqlcommon.SQLConfDatasourceURL, "!bad connection")
+	err := psql.Init(context.Background(), config, dcb)
 	assert.NoError(t, err)
 	_, err = psql.GetMigrationDriver(psql.DB())
 	assert.Error(t, err)
 
 	assert.Equal(t, "postgres", psql.Name())
-	assert.Equal(t, sq.Dollar, psql.PlaceholderFormat())
+	assert.Equal(t, sq.Dollar, psql.Features().PlaceholderFormat)
+	assert.Equal(t, `LOCK TABLE "events" IN EXCLUSIVE MODE;`, psql.Features().ExclusiveTableLockSQL("events"))
 
 	insert := sq.Insert("test").Columns("col1").Values("val1")
-	insert, query := psql.UpdateInsertForSequenceReturn(insert)
+	insert, query := psql.ApplyInsertQueryCustomizations(insert, true)
 	sql, _, err := insert.ToSql()
 	assert.NoError(t, err)
-	assert.Equal(t, "INSERT INTO test (col1) VALUES (?)  RETURNING seq", sql)
+	assert.Equal(t, "INSERT INTO test (col1) VALUES (?)  ON CONFLICT DO NOTHING RETURNING seq", sql)
 	assert.True(t, query)
 }

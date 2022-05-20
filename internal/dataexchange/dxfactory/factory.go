@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,34 +19,32 @@ package dxfactory
 import (
 	"context"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/dataexchange/dxhttps"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/internal/dataexchange/ffdx"
 	"github.com/hyperledger/firefly/pkg/dataexchange"
 )
 
-var plugins = []dataexchange.Plugin{
-	&dxhttps.HTTPS{},
+var (
+	OldFFDXPluginName = "https"
+	NewFFDXPluginName = (*ffdx.FFDX)(nil).Name()
+)
+
+var pluginsByName = map[string]func() dataexchange.Plugin{
+	NewFFDXPluginName: func() dataexchange.Plugin { return &ffdx.FFDX{} },
 }
 
-var pluginsByName = make(map[string]dataexchange.Plugin)
-
-func init() {
-	for _, p := range plugins {
-		pluginsByName[p.Name()] = p
-	}
-}
-
-func InitPrefix(prefix config.Prefix) {
-	for _, plugin := range plugins {
-		plugin.InitPrefix(prefix.SubPrefix(plugin.Name()))
+func InitConfig(config config.Section) {
+	for name, plugin := range pluginsByName {
+		plugin().InitConfig(config.SubSection(name))
 	}
 }
 
 func GetPlugin(ctx context.Context, pluginType string) (dataexchange.Plugin, error) {
 	plugin, ok := pluginsByName[pluginType]
 	if !ok {
-		return nil, i18n.NewError(ctx, i18n.MsgUnknownDataExchangePlugin, pluginType)
+		return nil, i18n.NewError(ctx, coremsgs.MsgUnknownDataExchangePlugin, pluginType)
 	}
-	return plugin, nil
+	return plugin(), nil
 }

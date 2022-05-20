@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -21,24 +21,34 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"time"
 
-	"github.com/hyperledger/firefly/internal/config"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly-common/pkg/retry"
+	"github.com/hyperledger/firefly/internal/assets"
+	"github.com/hyperledger/firefly/internal/broadcast"
+	"github.com/hyperledger/firefly/internal/coreconfig"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/data"
+	"github.com/hyperledger/firefly/internal/definitions"
 	"github.com/hyperledger/firefly/internal/events/eifactory"
 	"github.com/hyperledger/firefly/internal/events/system"
-	"github.com/hyperledger/firefly/internal/i18n"
 	"github.com/hyperledger/firefly/internal/identity"
-	"github.com/hyperledger/firefly/internal/log"
-	"github.com/hyperledger/firefly/internal/retry"
-	"github.com/hyperledger/firefly/internal/syshandlers"
+	"github.com/hyperledger/firefly/internal/metrics"
+	"github.com/hyperledger/firefly/internal/privatemessaging"
+	"github.com/hyperledger/firefly/internal/shareddownload"
 	"github.com/hyperledger/firefly/internal/sysmessaging"
 	"github.com/hyperledger/firefly/internal/txcommon"
 	"github.com/hyperledger/firefly/pkg/blockchain"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
 	"github.com/hyperledger/firefly/pkg/dataexchange"
-	"github.com/hyperledger/firefly/pkg/fftypes"
-	"github.com/hyperledger/firefly/pkg/publicstorage"
+	"github.com/hyperledger/firefly/pkg/sharedstorage"
 	"github.com/hyperledger/firefly/pkg/tokens"
+	"github.com/karlseguin/ccache"
 )
 
 type EventManager interface {
@@ -47,76 +57,98 @@ type EventManager interface {
 	NewSubscriptions() chan<- *fftypes.UUID
 	SubscriptionUpdates() chan<- *fftypes.UUID
 	DeletedSubscriptions() chan<- *fftypes.UUID
-	ChangeEvents() chan<- *fftypes.ChangeEvent
-	DeleteDurableSubscription(ctx context.Context, subDef *fftypes.Subscription) (err error)
-	CreateUpdateDurableSubscription(ctx context.Context, subDef *fftypes.Subscription, mustNew bool) (err error)
+	DeleteDurableSubscription(ctx context.Context, subDef *core.Subscription) (err error)
+	CreateUpdateDurableSubscription(ctx context.Context, subDef *core.Subscription, mustNew bool) (err error)
+	GetWebSocketStatus() *core.WebSocketStatus
 	Start() error
 	WaitStop()
 
 	// Bound blockchain callbacks
-	OperationUpdate(plugin fftypes.Named, operationID *fftypes.UUID, txState blockchain.TransactionStatus, errorMessage string, opOutput fftypes.JSONObject) error
-	BatchPinComplete(bi blockchain.Plugin, batch *blockchain.BatchPin, author string, protocolTxID string, additionalInfo fftypes.JSONObject) error
+	BatchPinComplete(bi blockchain.Plugin, batch *blockchain.BatchPin, signingKey *core.VerifierRef) error
+	BlockchainEvent(event *blockchain.EventWithSubscription) error
 
 	// Bound dataexchange callbacks
-	TransferResult(dx dataexchange.Plugin, trackingID string, status fftypes.OpStatus, info string, opOutput fftypes.JSONObject) error
-	BLOBReceived(dx dataexchange.Plugin, peerID string, hash fftypes.Bytes32, payloadRef string) error
-	MessageReceived(dx dataexchange.Plugin, peerID string, data []byte) error
+	DXEvent(dx dataexchange.Plugin, event dataexchange.DXEvent)
+
+	// Bound sharedstorage callbacks
+	SharedStorageBatchDownloaded(ss sharedstorage.Plugin, ns, payloadRef string, data []byte) (*fftypes.UUID, error)
+	SharedStorageBlobDownloaded(ss sharedstorage.Plugin, hash fftypes.Bytes32, size int64, payloadRef string)
 
 	// Bound token callbacks
-	TokensTransferred(tk tokens.Plugin, transfer *fftypes.TokenTransfer, protocolTxID string, additionalInfo fftypes.JSONObject) error
+	TokenPoolCreated(ti tokens.Plugin, pool *tokens.TokenPool) error
+	TokensTransferred(ti tokens.Plugin, transfer *tokens.TokenTransfer) error
+	TokensApproved(ti tokens.Plugin, approval *tokens.TokenApproval) error
+
+	GetPlugins() []*core.NodeStatusPlugin
 
 	// Internal events
 	sysmessaging.SystemEvents
 }
 
 type eventManager struct {
-	ctx                  context.Context
-	publicstorage        publicstorage.Plugin
-	database             database.Plugin
-	identity             identity.Manager
-	syshandlers          syshandlers.SystemHandlers
-	data                 data.Manager
-	subManager           *subscriptionManager
-	retry                retry.Retry
-	txhelper             txcommon.Helper
-	aggregator           *aggregator
-	newEventNotifier     *eventNotifier
-	newPinNotifier       *eventNotifier
-	opCorrelationRetries int
-	defaultTransport     string
-	internalEvents       *system.Events
+	ctx                   context.Context
+	ni                    sysmessaging.LocalNodeInfo
+	sharedstorage         sharedstorage.Plugin
+	database              database.Plugin
+	txHelper              txcommon.Helper
+	identity              identity.Manager
+	definitions           definitions.DefinitionHandler
+	data                  data.Manager
+	subManager            *subscriptionManager
+	retry                 retry.Retry
+	aggregator            *aggregator
+	broadcast             broadcast.Manager
+	messaging             privatemessaging.Manager
+	assets                assets.Manager
+	sharedDownload        shareddownload.Manager
+	blobReceiver          *blobReceiver
+	newEventNotifier      *eventNotifier
+	newPinNotifier        *eventNotifier
+	defaultTransport      string
+	internalEvents        *system.Events
+	metrics               metrics.Manager
+	chainListenerCache    *ccache.Cache
+	chainListenerCacheTTL time.Duration
 }
 
-func NewEventManager(ctx context.Context, pi publicstorage.Plugin, di database.Plugin, im identity.Manager, sh syshandlers.SystemHandlers, dm data.Manager) (EventManager, error) {
-	if pi == nil || di == nil || im == nil || dm == nil {
-		return nil, i18n.NewError(ctx, i18n.MsgInitializationNilDepError)
+func NewEventManager(ctx context.Context, ni sysmessaging.LocalNodeInfo, si sharedstorage.Plugin, di database.Plugin, bi blockchain.Plugin, im identity.Manager, dh definitions.DefinitionHandler, dm data.Manager, bm broadcast.Manager, pm privatemessaging.Manager, am assets.Manager, sd shareddownload.Manager, mm metrics.Manager, txHelper txcommon.Helper) (EventManager, error) {
+	if ni == nil || si == nil || di == nil || bi == nil || im == nil || dh == nil || dm == nil || bm == nil || pm == nil || am == nil {
+		return nil, i18n.NewError(ctx, coremsgs.MsgInitializationNilDepError, "EventManager")
 	}
 	newPinNotifier := newEventNotifier(ctx, "pins")
 	newEventNotifier := newEventNotifier(ctx, "events")
 	em := &eventManager{
-		ctx:           log.WithLogField(ctx, "role", "event-manager"),
-		publicstorage: pi,
-		database:      di,
-		identity:      im,
-		syshandlers:   sh,
-		data:          dm,
+		ctx:            log.WithLogField(ctx, "role", "event-manager"),
+		ni:             ni,
+		sharedstorage:  si,
+		database:       di,
+		txHelper:       txHelper,
+		identity:       im,
+		definitions:    dh,
+		data:           dm,
+		broadcast:      bm,
+		messaging:      pm,
+		assets:         am,
+		sharedDownload: sd,
 		retry: retry.Retry{
-			InitialDelay: config.GetDuration(config.EventAggregatorRetryInitDelay),
-			MaximumDelay: config.GetDuration(config.EventAggregatorRetryMaxDelay),
-			Factor:       config.GetFloat64(config.EventAggregatorRetryFactor),
+			InitialDelay: config.GetDuration(coreconfig.EventAggregatorRetryInitDelay),
+			MaximumDelay: config.GetDuration(coreconfig.EventAggregatorRetryMaxDelay),
+			Factor:       config.GetFloat64(coreconfig.EventAggregatorRetryFactor),
 		},
-		txhelper:             txcommon.NewTransactionHelper(di),
-		defaultTransport:     config.GetString(config.EventTransportsDefault),
-		opCorrelationRetries: config.GetInt(config.EventAggregatorOpCorrelationRetries),
-		newEventNotifier:     newEventNotifier,
-		newPinNotifier:       newPinNotifier,
-		aggregator:           newAggregator(ctx, di, sh, dm, newPinNotifier),
+		defaultTransport:      config.GetString(coreconfig.EventTransportsDefault),
+		newEventNotifier:      newEventNotifier,
+		newPinNotifier:        newPinNotifier,
+		aggregator:            newAggregator(ctx, di, bi, pm, dh, im, dm, newPinNotifier, mm),
+		metrics:               mm,
+		chainListenerCache:    ccache.New(ccache.Configure().MaxSize(config.GetByteSize(coreconfig.EventListenerTopicCacheSize))),
+		chainListenerCacheTTL: config.GetDuration(coreconfig.EventListenerTopicCacheTTL),
 	}
 	ie, _ := eifactory.GetPlugin(ctx, system.SystemEventsTransport)
 	em.internalEvents = ie.(*system.Events)
+	em.blobReceiver = newBlobReceiver(ctx, em.aggregator)
 
 	var err error
-	if em.subManager, err = newSubscriptionManager(ctx, di, dm, newEventNotifier, sh); err != nil {
+	if em.subManager, err = newSubscriptionManager(ctx, di, dm, newEventNotifier, bm, pm, txHelper); err != nil {
 		return nil, err
 	}
 
@@ -127,6 +159,7 @@ func (em *eventManager) Start() (err error) {
 	err = em.subManager.start()
 	if err == nil {
 		em.aggregator.start()
+		em.blobReceiver.start()
 	}
 	return err
 }
@@ -151,18 +184,15 @@ func (em *eventManager) DeletedSubscriptions() chan<- *fftypes.UUID {
 	return em.subManager.deletedSubscriptions
 }
 
-func (em *eventManager) ChangeEvents() chan<- *fftypes.ChangeEvent {
-	return em.subManager.cel.changeEvents
-}
-
 func (em *eventManager) WaitStop() {
 	em.subManager.close()
+	em.blobReceiver.stop()
 	<-em.aggregator.eventPoller.closed
 }
 
-func (em *eventManager) CreateUpdateDurableSubscription(ctx context.Context, subDef *fftypes.Subscription, mustNew bool) (err error) {
+func (em *eventManager) CreateUpdateDurableSubscription(ctx context.Context, subDef *core.Subscription, mustNew bool) (err error) {
 	if subDef.Namespace == "" || subDef.Name == "" || subDef.ID == nil {
-		return i18n.NewError(ctx, i18n.MsgInvalidSubscription)
+		return i18n.NewError(ctx, coremsgs.MsgInvalidSubscription)
 	}
 
 	if subDef.Transport == "" {
@@ -178,7 +208,7 @@ func (em *eventManager) CreateUpdateDurableSubscription(ctx context.Context, sub
 	existing, _ := em.database.GetSubscriptionByName(ctx, subDef.Namespace, subDef.Name)
 	if existing != nil {
 		if mustNew {
-			return i18n.NewError(ctx, i18n.MsgAlreadyExists, "subscription", subDef.Namespace, subDef.Name)
+			return i18n.NewError(ctx, coremsgs.MsgAlreadyExists, "subscription", subDef.Namespace, subDef.Name)
 		}
 		// Copy over the generated fields, so we can do a compare
 		subDef.Created = existing.Created
@@ -199,7 +229,7 @@ func (em *eventManager) CreateUpdateDurableSubscription(ctx context.Context, sub
 		if err != nil {
 			return err
 		}
-		lockedInFirstEvent := fftypes.SubOptsFirstEvent(strconv.FormatInt(sequence, 10))
+		lockedInFirstEvent := core.SubOptsFirstEvent(strconv.FormatInt(sequence, 10))
 		subDef.Options.FirstEvent = &lockedInFirstEvent
 	}
 
@@ -207,11 +237,28 @@ func (em *eventManager) CreateUpdateDurableSubscription(ctx context.Context, sub
 	return em.database.UpsertSubscription(ctx, subDef, !mustNew)
 }
 
-func (em *eventManager) DeleteDurableSubscription(ctx context.Context, subDef *fftypes.Subscription) (err error) {
+func (em *eventManager) DeleteDurableSubscription(ctx context.Context, subDef *core.Subscription) (err error) {
 	// The event in the database for the deletion of the susbscription, will asynchronously update the submanager
 	return em.database.DeleteSubscriptionByID(ctx, subDef.ID)
 }
 
 func (em *eventManager) AddSystemEventListener(ns string, el system.EventListener) error {
 	return em.internalEvents.AddListener(ns, el)
+}
+
+func (em *eventManager) GetPlugins() []*core.NodeStatusPlugin {
+	eventsArray := make([]*core.NodeStatusPlugin, 0)
+	plugins := em.subManager.transports
+
+	for _, plugin := range plugins {
+		eventsArray = append(eventsArray, &core.NodeStatusPlugin{
+			PluginType: plugin.Name(),
+		})
+	}
+
+	return eventsArray
+}
+
+func (em *eventManager) GetWebSocketStatus() *core.WebSocketStatus {
+	return em.subManager.getWebSocketStatus()
 }

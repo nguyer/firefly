@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -18,48 +18,33 @@ package assets
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/sysmessaging"
+	"github.com/hyperledger/firefly/internal/txcommon"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
-// Note: the counterpart to below (retrieveTokenTransferInputs) lives in the events package
-func addTokenTransferInputs(op *fftypes.Operation, transfer *fftypes.TokenTransfer) {
-	op.Input = fftypes.JSONObject{
-		"id": transfer.LocalID.String(),
-	}
+func (am *assetManager) GetTokenTransfers(ctx context.Context, ns string, filter database.AndFilter) ([]*core.TokenTransfer, *database.FilterResult, error) {
+	return am.database.GetTokenTransfers(ctx, am.scopeNS(ns, filter))
 }
 
-func (am *assetManager) GetTokenTransfers(ctx context.Context, ns string, filter database.AndFilter) ([]*fftypes.TokenTransfer, *database.FilterResult, error) {
-	return am.database.GetTokenTransfers(ctx, filter)
-}
-
-func (am *assetManager) GetTokenTransferByID(ctx context.Context, ns, id string) (*fftypes.TokenTransfer, error) {
+func (am *assetManager) GetTokenTransferByID(ctx context.Context, ns, id string) (*core.TokenTransfer, error) {
 	transferID, err := fftypes.ParseUUID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	return am.database.GetTokenTransfer(ctx, transferID)
+	return am.database.GetTokenTransferByID(ctx, transferID)
 }
 
-func (am *assetManager) GetTokenTransfersByPool(ctx context.Context, ns, connector, name string, filter database.AndFilter) ([]*fftypes.TokenTransfer, *database.FilterResult, error) {
-	pool, err := am.GetTokenPool(ctx, ns, connector, name)
-	if err != nil {
-		return nil, nil, err
-	}
-	return am.database.GetTokenTransfers(ctx, filter.Condition(filter.Builder().Eq("poolprotocolid", pool.ProtocolID)))
-}
-
-func (am *assetManager) NewTransfer(ns, connector, poolName string, transfer *fftypes.TokenTransferInput) sysmessaging.MessageSender {
+func (am *assetManager) NewTransfer(ns string, transfer *core.TokenTransferInput) sysmessaging.MessageSender {
 	sender := &transferSender{
 		mgr:       am,
 		namespace: ns,
-		connector: connector,
-		poolName:  poolName,
 		transfer:  transfer,
 	}
 	sender.setDefaults()
@@ -67,86 +52,62 @@ func (am *assetManager) NewTransfer(ns, connector, poolName string, transfer *ff
 }
 
 type transferSender struct {
-	mgr          *assetManager
-	namespace    string
-	connector    string
-	poolName     string
-	transfer     *fftypes.TokenTransferInput
-	sendCallback sysmessaging.BeforeSendCallback
+	mgr       *assetManager
+	namespace string
+	transfer  *core.TokenTransferInput
+	resolved  bool
+	msgSender sysmessaging.MessageSender
+}
+
+// sendMethod is the specific operation requested of the transferSender.
+// To minimize duplication and group database operations, there is a single internal flow with subtle differences for each method.
+type sendMethod int
+
+const (
+	// methodPrepare requests that the transfer be validated and prepared, but not sent (i.e. no database writes are performed)
+	methodPrepare sendMethod = iota
+	// methodSend requests that the transfer be sent to the blockchain, but does not wait for confirmation
+	methodSend
+	// methodSendAndWait requests that the transfer be sent and waits until it is confirmed by the blockchain
+	methodSendAndWait
+)
+
+func (s *transferSender) Prepare(ctx context.Context) error {
+	return s.resolveAndSend(ctx, methodPrepare)
 }
 
 func (s *transferSender) Send(ctx context.Context) error {
-	return s.resolveAndSend(ctx, false)
+	return s.resolveAndSend(ctx, methodSend)
 }
 
 func (s *transferSender) SendAndWait(ctx context.Context) error {
-	return s.resolveAndSend(ctx, true)
-}
-
-func (s *transferSender) BeforeSend(cb sysmessaging.BeforeSendCallback) sysmessaging.MessageSender {
-	s.sendCallback = cb
-	return s
+	return s.resolveAndSend(ctx, methodSendAndWait)
 }
 
 func (s *transferSender) setDefaults() {
 	s.transfer.LocalID = fftypes.NewUUID()
-	s.transfer.Connector = s.connector
 }
 
-func (am *assetManager) MintTokens(ctx context.Context, ns, connector, poolName string, transfer *fftypes.TokenTransferInput, waitConfirm bool) (out *fftypes.TokenTransfer, err error) {
-	transfer.Type = fftypes.TokenTransferTypeMint
-	if transfer.Key == "" {
-		org, err := am.identity.GetLocalOrganization(ctx)
+func (am *assetManager) validateTransfer(ctx context.Context, ns string, transfer *core.TokenTransferInput) (pool *core.TokenPool, err error) {
+	if transfer.Pool == "" {
+		pool, err = am.getDefaultTokenPool(ctx, ns)
 		if err != nil {
 			return nil, err
 		}
-		transfer.Key = org.Identity
-	}
-	transfer.From = ""
-	if transfer.To == "" {
-		transfer.To = transfer.Key
-	}
-
-	sender := am.NewTransfer(ns, connector, poolName, transfer)
-	if waitConfirm {
-		err = sender.SendAndWait(ctx)
 	} else {
-		err = sender.Send(ctx)
-	}
-	return &transfer.TokenTransfer, err
-}
-
-func (am *assetManager) BurnTokens(ctx context.Context, ns, connector, poolName string, transfer *fftypes.TokenTransferInput, waitConfirm bool) (out *fftypes.TokenTransfer, err error) {
-	transfer.Type = fftypes.TokenTransferTypeBurn
-	if transfer.Key == "" {
-		org, err := am.identity.GetLocalOrganization(ctx)
+		pool, err = am.GetTokenPoolByNameOrID(ctx, ns, transfer.Pool)
 		if err != nil {
 			return nil, err
 		}
-		transfer.Key = org.Identity
 	}
-	if transfer.From == "" {
-		transfer.From = transfer.Key
-	}
-	transfer.To = ""
+	transfer.TokenTransfer.Pool = pool.ID
+	transfer.TokenTransfer.Connector = pool.Connector
 
-	sender := am.NewTransfer(ns, connector, poolName, transfer)
-	if waitConfirm {
-		err = sender.SendAndWait(ctx)
-	} else {
-		err = sender.Send(ctx)
+	if pool.State != core.TokenPoolStateConfirmed {
+		return nil, i18n.NewError(ctx, coremsgs.MsgTokenPoolNotConfirmed)
 	}
-	return &transfer.TokenTransfer, err
-}
-
-func (am *assetManager) TransferTokens(ctx context.Context, ns, connector, poolName string, transfer *fftypes.TokenTransferInput, waitConfirm bool) (out *fftypes.TokenTransfer, err error) {
-	transfer.Type = fftypes.TokenTransferTypeTransfer
-	if transfer.Key == "" {
-		org, err := am.identity.GetLocalOrganization(ctx)
-		if err != nil {
-			return nil, err
-		}
-		transfer.Key = org.Identity
+	if transfer.Key, err = am.identity.NormalizeSigningKey(ctx, transfer.Key, am.keyNormalization); err != nil {
+		return nil, err
 	}
 	if transfer.From == "" {
 		transfer.From = transfer.Key
@@ -154,11 +115,16 @@ func (am *assetManager) TransferTokens(ctx context.Context, ns, connector, poolN
 	if transfer.To == "" {
 		transfer.To = transfer.Key
 	}
-	if transfer.From == transfer.To {
-		return nil, i18n.NewError(ctx, i18n.MsgCannotTransferToSelf)
-	}
+	return pool, nil
+}
 
-	sender := am.NewTransfer(ns, connector, poolName, transfer)
+func (am *assetManager) MintTokens(ctx context.Context, ns string, transfer *core.TokenTransferInput, waitConfirm bool) (out *core.TokenTransfer, err error) {
+	transfer.Type = core.TokenTransferTypeMint
+
+	sender := am.NewTransfer(ns, transfer)
+	if am.metrics.IsMetricsEnabled() {
+		am.metrics.TransferSubmitted(&transfer.TokenTransfer)
+	}
 	if waitConfirm {
 		err = sender.SendAndWait(ctx)
 	} else {
@@ -167,118 +133,150 @@ func (am *assetManager) TransferTokens(ctx context.Context, ns, connector, poolN
 	return &transfer.TokenTransfer, err
 }
 
-func (s *transferSender) resolveAndSend(ctx context.Context, waitConfirm bool) (err error) {
-	plugin, err := s.mgr.selectTokenPlugin(ctx, s.connector)
-	if err != nil {
-		return err
-	}
-	pool, err := s.mgr.GetTokenPool(ctx, s.namespace, s.connector, s.poolName)
-	if err != nil {
-		return err
-	}
-	s.transfer.PoolProtocolID = pool.ProtocolID
+func (am *assetManager) BurnTokens(ctx context.Context, ns string, transfer *core.TokenTransferInput, waitConfirm bool) (out *core.TokenTransfer, err error) {
+	transfer.Type = core.TokenTransferTypeBurn
 
-	var messageSender sysmessaging.MessageSender
+	sender := am.NewTransfer(ns, transfer)
+	if am.metrics.IsMetricsEnabled() {
+		am.metrics.TransferSubmitted(&transfer.TokenTransfer)
+	}
+	if waitConfirm {
+		err = sender.SendAndWait(ctx)
+	} else {
+		err = sender.Send(ctx)
+	}
+	return &transfer.TokenTransfer, err
+}
+
+func (am *assetManager) TransferTokens(ctx context.Context, ns string, transfer *core.TokenTransferInput, waitConfirm bool) (out *core.TokenTransfer, err error) {
+	transfer.Type = core.TokenTransferTypeTransfer
+
+	sender := am.NewTransfer(ns, transfer)
+	if am.metrics.IsMetricsEnabled() {
+		am.metrics.TransferSubmitted(&transfer.TokenTransfer)
+	}
+	if waitConfirm {
+		err = sender.SendAndWait(ctx)
+	} else {
+		err = sender.Send(ctx)
+	}
+	return &transfer.TokenTransfer, err
+}
+
+func (s *transferSender) resolveAndSend(ctx context.Context, method sendMethod) (err error) {
+	if !s.resolved {
+		if err = s.resolve(ctx); err != nil {
+			return err
+		}
+		s.resolved = true
+	}
+
+	if method == methodSendAndWait && s.transfer.Message != nil {
+		// Begin waiting for the message, and trigger the transfer.
+		// A successful transfer will trigger the message via the event handler, so we can wait for it all to complete.
+		_, err := s.mgr.syncasync.WaitForMessage(ctx, s.namespace, s.transfer.Message.Header.ID, func(ctx context.Context) error {
+			return s.sendInternal(ctx, methodSendAndWait)
+		})
+		return err
+	}
+
+	return s.sendInternal(ctx, method)
+}
+
+func (s *transferSender) resolve(ctx context.Context) (err error) {
+	// Resolve the attached message
 	if s.transfer.Message != nil {
-		if messageSender, err = s.buildTransferMessage(ctx, s.namespace, s.transfer.Message); err != nil {
+		s.msgSender, err = s.buildTransferMessage(ctx, s.namespace, s.transfer.Message)
+		if err != nil {
 			return err
 		}
-	}
-
-	switch {
-	case waitConfirm && messageSender != nil:
-		// prepare the message, send the transfer async, then send the message and wait
-		return messageSender.
-			BeforeSend(func(ctx context.Context) error {
-				s.transfer.MessageHash = s.transfer.Message.Hash
-				s.transfer.Message = nil
-				return s.Send(ctx)
-			}).
-			SendAndWait(ctx)
-	case waitConfirm:
-		// no message - just send the transfer and wait
-		return s.sendSync(ctx)
-	case messageSender != nil:
-		// send the message async and then move on to the transfer
-		if err := messageSender.Send(ctx); err != nil {
+		if err = s.msgSender.Prepare(ctx); err != nil {
 			return err
 		}
-		s.transfer.MessageHash = s.transfer.Message.Hash
+		s.transfer.TokenTransfer.Message = s.transfer.Message.Header.ID
+		s.transfer.TokenTransfer.MessageHash = s.transfer.Message.Hash
 	}
-
-	tx := &fftypes.Transaction{
-		ID: fftypes.NewUUID(),
-		Subject: fftypes.TransactionSubject{
-			Namespace: s.namespace,
-			Type:      fftypes.TransactionTypeTokenTransfer,
-			Signer:    s.transfer.Key,
-			Reference: s.transfer.LocalID,
-		},
-		Created: fftypes.Now(),
-		Status:  fftypes.OpStatusPending,
-	}
-	tx.Hash = tx.Subject.Hash()
-	err = s.mgr.database.UpsertTransaction(ctx, tx, false /* should be new, or idempotent replay */)
-	if err != nil {
-		return err
-	}
-
-	s.transfer.TX.ID = tx.ID
-	s.transfer.TX.Type = tx.Subject.Type
-
-	op := fftypes.NewTXOperation(
-		plugin,
-		s.namespace,
-		tx.ID,
-		"",
-		fftypes.OpTypeTokenTransfer,
-		fftypes.OpStatusPending,
-		"")
-	addTokenTransferInputs(op, &s.transfer.TokenTransfer)
-	if err := s.mgr.database.UpsertOperation(ctx, op, false); err != nil {
-		return err
-	}
-
-	if s.sendCallback != nil {
-		if err := s.sendCallback(ctx); err != nil {
-			return err
-		}
-	}
-
-	switch s.transfer.Type {
-	case fftypes.TokenTransferTypeMint:
-		return plugin.MintTokens(ctx, op.ID, &s.transfer.TokenTransfer)
-	case fftypes.TokenTransferTypeTransfer:
-		return plugin.TransferTokens(ctx, op.ID, &s.transfer.TokenTransfer)
-	case fftypes.TokenTransferTypeBurn:
-		return plugin.BurnTokens(ctx, op.ID, &s.transfer.TokenTransfer)
-	default:
-		panic(fmt.Sprintf("unknown transfer type: %v", s.transfer.Type))
-	}
+	return nil
 }
 
-func (s *transferSender) sendSync(ctx context.Context) error {
-	out, err := s.mgr.syncasync.SendConfirmTokenTransfer(ctx, s.namespace, s.transfer.LocalID, s.Send)
-	if out != nil {
-		s.transfer.TokenTransfer = *out
+func (s *transferSender) sendInternal(ctx context.Context, method sendMethod) (err error) {
+	if method == methodSendAndWait {
+		out, err := s.mgr.syncasync.WaitForTokenTransfer(ctx, s.namespace, s.transfer.LocalID, s.Send)
+		if out != nil {
+			s.transfer.TokenTransfer = *out
+		}
+		return err
 	}
+
+	var op *core.Operation
+	var pool *core.TokenPool
+	err = s.mgr.database.RunAsGroup(ctx, func(ctx context.Context) (err error) {
+		pool, err = s.mgr.validateTransfer(ctx, s.namespace, s.transfer)
+		if err != nil {
+			return err
+		}
+		if s.transfer.Type == core.TokenTransferTypeTransfer && s.transfer.From == s.transfer.To {
+			return i18n.NewError(ctx, coremsgs.MsgCannotTransferToSelf)
+		}
+
+		plugin, err := s.mgr.selectTokenPlugin(ctx, s.transfer.Connector)
+		if err != nil {
+			return err
+		}
+
+		if method == methodPrepare {
+			return nil
+		}
+
+		txid, err := s.mgr.txHelper.SubmitNewTransaction(ctx, s.namespace, core.TransactionTypeTokenTransfer)
+		if err != nil {
+			return err
+		}
+		s.transfer.TX.ID = txid
+		s.transfer.TX.Type = core.TransactionTypeTokenTransfer
+
+		op = core.NewOperation(
+			plugin,
+			s.namespace,
+			txid,
+			core.OpTypeTokenTransfer)
+		if err = txcommon.AddTokenTransferInputs(op, &s.transfer.TokenTransfer); err == nil {
+			err = s.mgr.database.InsertOperation(ctx, op)
+		}
+		return err
+	})
+	if err != nil {
+		return err
+	} else if method == methodPrepare {
+		return nil
+	}
+
+	// Write the transfer message outside of any DB transaction, as it will use the background message writer.
+	if s.transfer.Message != nil {
+		s.transfer.Message.State = core.MessageStateStaged
+		if err = s.msgSender.Send(ctx); err != nil {
+			return err
+		}
+	}
+
+	_, err = s.mgr.operations.RunOperation(ctx, opTransfer(op, pool, &s.transfer.TokenTransfer))
 	return err
 }
 
-func (s *transferSender) buildTransferMessage(ctx context.Context, ns string, in *fftypes.MessageInOut) (sysmessaging.MessageSender, error) {
-	allowedTypes := []fftypes.FFEnum{
-		fftypes.MessageTypeTransferBroadcast,
-		fftypes.MessageTypeTransferPrivate,
+func (s *transferSender) buildTransferMessage(ctx context.Context, ns string, in *core.MessageInOut) (sysmessaging.MessageSender, error) {
+	allowedTypes := []core.FFEnum{
+		core.MessageTypeTransferBroadcast,
+		core.MessageTypeTransferPrivate,
 	}
 	if in.Header.Type == "" {
-		in.Header.Type = fftypes.MessageTypeTransferBroadcast
+		in.Header.Type = core.MessageTypeTransferBroadcast
 	}
 	switch in.Header.Type {
-	case fftypes.MessageTypeTransferBroadcast:
+	case core.MessageTypeTransferBroadcast:
 		return s.mgr.broadcast.NewBroadcast(ns, in), nil
-	case fftypes.MessageTypeTransferPrivate:
+	case core.MessageTypeTransferPrivate:
 		return s.mgr.messaging.NewMessage(ns, in), nil
 	default:
-		return nil, i18n.NewError(ctx, i18n.MsgInvalidMessageType, allowedTypes)
+		return nil, i18n.NewError(ctx, coremsgs.MsgInvalidMessageType, allowedTypes)
 	}
 }

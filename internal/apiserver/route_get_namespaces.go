@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,10 +19,10 @@ package apiserver
 import (
 	"net/http"
 
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 var getNamespaces = &oapispec.Route{
@@ -32,11 +32,11 @@ var getNamespaces = &oapispec.Route{
 	PathParams:      nil,
 	QueryParams:     nil,
 	FilterFactory:   database.NamespaceQueryFactory,
-	Description:     i18n.MsgTBD,
+	Description:     coremsgs.APIEndpointsGetNamespaces,
 	JSONInputValue:  nil,
-	JSONOutputValue: func() interface{} { return []*fftypes.Namespace{} },
+	JSONOutputValue: func() interface{} { return []*core.Namespace{} },
 	JSONOutputCodes: []int{http.StatusOK},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		return filterResult(r.Or.GetNamespaces(r.Ctx, r.Filter))
+		return filterResult(getOr(r.Ctx).GetNamespaces(r.Ctx, r.Filter))
 	},
 }

@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -20,16 +20,26 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
-func (pm *privateMessaging) resolveRecipientList(ctx context.Context, in *fftypes.MessageInOut) error {
+func (pm *privateMessaging) resolveRecipientList(ctx context.Context, in *core.MessageInOut) error {
 	if in.Header.Group != nil {
 		log.L(ctx).Debugf("Group '%s' specified for message", in.Header.Group)
-		return nil // validity of existing group checked later
+		group, err := pm.database.GetGroupByHash(ctx, in.Header.Group)
+		if err != nil {
+			return err
+		}
+		if group == nil {
+			return i18n.NewError(ctx, coremsgs.MsgGroupNotFound, in.Header.Group)
+		}
+		// We have a group already resolved
+		return nil
 	}
 	if in.Group == nil || len(in.Group.Members) == 0 {
 		return i18n.NewError(ctx, i18n.MsgGroupMustHaveMembers)
@@ -43,139 +53,126 @@ func (pm *privateMessaging) resolveRecipientList(ctx context.Context, in *fftype
 
 	// If the group is new, we need to do a group initialization, before we send the message itself.
 	if isNew {
-		return pm.groupManager.groupInit(ctx, &in.Header.Identity, group)
+		return pm.groupManager.groupInit(ctx, &in.Header.SignerRef, group)
 	}
 	return err
 }
 
-func (pm *privateMessaging) resolveOrg(ctx context.Context, orgInput string) (org *fftypes.Organization, err error) {
-	orgID, err := fftypes.ParseUUID(ctx, orgInput)
-	if err == nil {
-		org, err = pm.database.GetOrganizationByID(ctx, orgID)
-
-	} else {
-		org, err = pm.database.GetOrganizationByName(ctx, orgInput)
-		if err == nil && org == nil {
-			org, err = pm.database.GetOrganizationByIdentity(ctx, orgInput)
+func (pm *privateMessaging) getFirstNodeForOrg(ctx context.Context, identity *core.Identity) (*core.Identity, error) {
+	node := pm.orgFirstNodes[*identity.ID]
+	if node == nil && identity.Type == core.IdentityTypeOrg {
+		fb := database.IdentityQueryFactory.NewFilterLimit(ctx, 1)
+		filter := fb.And(
+			fb.Eq("parent", identity.ID),
+			fb.Eq("type", core.IdentityTypeNode),
+		)
+		nodes, _, err := pm.database.GetIdentities(ctx, filter)
+		if err != nil || len(nodes) == 0 {
+			return nil, err
 		}
-	}
-	if err != nil {
-		return nil, err
-	}
-	if org == nil {
-		return nil, i18n.NewError(ctx, i18n.MsgOrgNotFound, orgInput)
-	}
-	return org, nil
-}
-
-func (pm *privateMessaging) resolveNode(ctx context.Context, org *fftypes.Organization, nodeInput string) (node *fftypes.Node, err error) {
-	if nodeInput != "" {
-		var nodeID *fftypes.UUID
-		nodeID, err = fftypes.ParseUUID(ctx, nodeInput)
-		if err == nil {
-			node, err = pm.database.GetNodeByID(ctx, nodeID)
-		} else {
-			node, err = pm.database.GetNode(ctx, org.Identity, nodeInput)
-		}
-	} else {
-		// Find any node owned by this organization
-		var nodes []*fftypes.Node
-		originalOrgName := fmt.Sprintf("%s/%s", org.Name, org.Identity)
-		for org != nil && node == nil {
-			filter := database.NodeQueryFactory.NewFilterLimit(ctx, 1).Eq("owner", org.Identity)
-			nodes, _, err = pm.database.GetNodes(ctx, filter)
-			switch {
-			case err == nil && len(nodes) > 0:
-				// This org owns a node
-				node = nodes[0]
-			case err == nil && org.Parent != "":
-				// This org has a parent, maybe that org owns a node
-				org, err = pm.database.GetOrganizationByIdentity(ctx, org.Parent)
-			default:
-				return nil, i18n.NewError(ctx, i18n.MsgNodeNotFoundInOrg, originalOrgName)
-			}
-		}
-	}
-	if err != nil {
-		return nil, err
-	}
-	if node == nil {
-		return nil, i18n.NewError(ctx, i18n.MsgNodeNotFound, nodeInput)
+		node = nodes[0]
+		pm.orgFirstNodes[*identity.ID] = node
 	}
 	return node, nil
 }
 
-func (pm *privateMessaging) getRecipients(ctx context.Context, in *fftypes.MessageInOut) (gi *fftypes.GroupIdentity, err error) {
-
-	localOrgDID, err := pm.identity.ResolveLocalOrgDID(ctx)
-	if err != nil {
+func (pm *privateMessaging) resolveNode(ctx context.Context, identity *core.Identity, nodeInput string) (node *core.Identity, err error) {
+	retryable := true
+	if nodeInput != "" {
+		node, retryable, err = pm.identity.CachedIdentityLookupMustExist(ctx, nodeInput)
+	} else {
+		// Find any node owned by this organization
+		inputIdentityDebugInfo := fmt.Sprintf("%s (%s)", identity.DID, identity.ID)
+		for identity != nil && node == nil {
+			node, err = pm.getFirstNodeForOrg(ctx, identity)
+			switch {
+			case err == nil && node != nil:
+				// This is an org, and it owns a node
+			case err == nil && identity.Parent != nil:
+				// This identity has a parent, maybe that org owns a node
+				identity, err = pm.identity.CachedIdentityLookupByID(ctx, identity.Parent)
+			default:
+				return nil, i18n.NewError(ctx, coremsgs.MsgNodeNotFoundInOrg, inputIdentityDebugInfo)
+			}
+		}
+	}
+	if err != nil && retryable {
 		return nil, err
 	}
+	if node == nil {
+		return nil, i18n.NewError(ctx, coremsgs.MsgNodeNotFound, nodeInput)
+	}
+	return node, nil
+}
 
-	localOrg, err := pm.identity.GetLocalOrganization(ctx)
+func (pm *privateMessaging) getRecipients(ctx context.Context, in *core.MessageInOut) (gi *core.GroupIdentity, err error) {
+
+	localOrg, err := pm.identity.GetNodeOwnerOrg(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	foundLocal := false
-	gi = &fftypes.GroupIdentity{
+	gi = &core.GroupIdentity{
 		Namespace: in.Message.Header.Namespace,
 		Name:      in.Group.Name,
-		Ledger:    in.Group.Ledger,
-		Members:   make(fftypes.Members, len(in.Group.Members)),
+		Members:   make(core.Members, len(in.Group.Members)),
 	}
 	for i, rInput := range in.Group.Members {
-		// Resolve the org
-		org, err := pm.resolveOrg(ctx, rInput.Identity)
+		// Resolve the identity
+		identity, _, err := pm.identity.CachedIdentityLookupMustExist(ctx, rInput.Identity)
 		if err != nil {
 			return nil, err
 		}
 		// Resolve the node
-		node, err := pm.resolveNode(ctx, org, rInput.Node)
+		node, err := pm.resolveNode(ctx, identity, rInput.Node)
 		if err != nil {
 			return nil, err
 		}
-		foundLocal = foundLocal || (node.Owner == localOrg.Identity && node.Name == pm.localNodeName)
-		gi.Members[i] = &fftypes.Member{
-			Identity: org.GetDID(),
+		isLocal := (node.Parent.Equals(localOrg.ID) && node.Name == pm.localNodeName)
+		foundLocal = foundLocal || isLocal
+		log.L(ctx).Debugf("Resolved group identity %s node=%s to identity %s node=%s local=%t", rInput.Identity, rInput.Node, identity.DID, node.ID, isLocal)
+		gi.Members[i] = &core.Member{
+			Identity: identity.DID,
 			Node:     node.ID,
 		}
 	}
 	if !foundLocal {
 		// Add in the local org identity
-		localNodeID, err := pm.resolveLocalNode(ctx, localOrg.Identity)
+		localNodeID, err := pm.resolveLocalNode(ctx, localOrg)
 		if err != nil {
 			return nil, err
 		}
-		gi.Members = append(gi.Members, &fftypes.Member{
-			Identity: localOrgDID,
+		gi.Members = append(gi.Members, &core.Member{
+			Identity: localOrg.DID,
 			Node:     localNodeID,
 		})
 	}
 	return gi, nil
 }
 
-func (pm *privateMessaging) resolveLocalNode(ctx context.Context, localOrgSigningKey string) (*fftypes.UUID, error) {
+func (pm *privateMessaging) resolveLocalNode(ctx context.Context, localOrg *core.Identity) (*fftypes.UUID, error) {
 	if pm.localNodeID != nil {
 		return pm.localNodeID, nil
 	}
-	fb := database.NodeQueryFactory.NewFilterLimit(ctx, 1)
+	fb := database.IdentityQueryFactory.NewFilterLimit(ctx, 1)
 	filter := fb.And(
-		fb.Eq("owner", localOrgSigningKey),
+		fb.Eq("parent", localOrg.ID),
+		fb.Eq("type", core.IdentityTypeNode),
 		fb.Eq("name", pm.localNodeName),
 	)
-	nodes, _, err := pm.database.GetNodes(ctx, filter)
+	nodes, _, err := pm.database.GetIdentities(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
 	if len(nodes) == 0 {
-		return nil, i18n.NewError(ctx, i18n.MsgLocalNodeResolveFailed)
+		return nil, i18n.NewError(ctx, coremsgs.MsgLocalNodeResolveFailed)
 	}
 	pm.localNodeID = nodes[0].ID
 	return pm.localNodeID, nil
 }
 
-func (pm *privateMessaging) findOrGenerateGroup(ctx context.Context, in *fftypes.MessageInOut) (group *fftypes.Group, isNew bool, err error) {
+func (pm *privateMessaging) findOrGenerateGroup(ctx context.Context, in *core.MessageInOut) (group *core.Group, isNew bool, err error) {
 	gi, err := pm.getRecipients(ctx, in)
 	if err != nil {
 		return nil, false, err
@@ -185,19 +182,18 @@ func (pm *privateMessaging) findOrGenerateGroup(ctx context.Context, in *fftypes
 	// generate the deterministic hash. We then search on that group to see if it
 	// exists. If it doesn't, we go ahead and create it. If it does - we don't return
 	// this candidate - we return the existing group.
-	newCandidate := &fftypes.Group{
+	newCandidate := &core.Group{
 		GroupIdentity: *gi,
 		Created:       fftypes.Now(),
 	}
 	newCandidate.Seal()
 
-	filter := database.GroupQueryFactory.NewFilterLimit(ctx, 1).Eq("hash", newCandidate.Hash)
-	groups, _, err := pm.database.GetGroups(ctx, filter)
+	group, _, err = pm.getGroupNodes(ctx, newCandidate.Hash, true)
 	if err != nil {
 		return nil, false, err
 	}
-	if len(groups) > 0 {
-		return groups[0], false, nil
+	if group != nil {
+		return group, false, nil
 	}
 	return newCandidate, true, nil
 }

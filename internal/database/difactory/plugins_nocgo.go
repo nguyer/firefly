@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -14,6 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !cgo
 // +build !cgo
 
 package difactory
@@ -23,6 +24,6 @@ import (
 	"github.com/hyperledger/firefly/pkg/database"
 )
 
-var plugins = []database.Plugin{
-	&postgres.Postgres{},
+var pluginsByName = map[string]func() database.Plugin{
+	(*postgres.Postgres)(nil).Name(): func() database.Plugin { return &postgres.Postgres{} },
 }

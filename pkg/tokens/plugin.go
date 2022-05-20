@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,20 +19,22 @@ package tokens
 import (
 	"context"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/blockchain"
+	"github.com/hyperledger/firefly/pkg/core"
 )
 
 // Plugin is the interface implemented by each tokens plugin
 type Plugin interface {
-	fftypes.Named
+	core.Named
 
-	// InitPrefix initializes the set of configuration options that are valid, with defaults. Called on all plugins.
-	InitPrefix(prefix config.PrefixArray)
+	// InitConfig initializes the set of configuration options that are valid, with defaults. Called on all plugins.
+	InitConfig(config config.ArraySection)
 
 	// Init initializes the plugin, with configuration
 	// Returns the supported featureset of the interface
-	Init(ctx context.Context, name string, prefix config.Prefix, callbacks Callbacks) error
+	Init(ctx context.Context, name string, config config.Section, callbacks Callbacks) error
 
 	// Blockchain interface must not deliver any events until start is called
 	Start() error
@@ -41,16 +43,22 @@ type Plugin interface {
 	Capabilities() *Capabilities
 
 	// CreateTokenPool creates a new (fungible or non-fungible) pool of tokens
-	CreateTokenPool(ctx context.Context, operationID *fftypes.UUID, pool *fftypes.TokenPool) error
+	CreateTokenPool(ctx context.Context, opID *fftypes.UUID, pool *core.TokenPool) (complete bool, err error)
+
+	// ActivateTokenPool activates a pool in order to begin receiving events
+	ActivateTokenPool(ctx context.Context, opID *fftypes.UUID, pool *core.TokenPool) (complete bool, err error)
 
 	// MintTokens mints new tokens in a pool and adds them to the recipient's account
-	MintTokens(ctx context.Context, operationID *fftypes.UUID, mint *fftypes.TokenTransfer) error
+	MintTokens(ctx context.Context, opID *fftypes.UUID, poolLocator string, mint *core.TokenTransfer) error
 
 	// BurnTokens burns tokens from an account
-	BurnTokens(ctx context.Context, operationID *fftypes.UUID, burn *fftypes.TokenTransfer) error
+	BurnTokens(ctx context.Context, opID *fftypes.UUID, poolLocator string, burn *core.TokenTransfer) error
 
 	// TransferTokens transfers tokens within a pool from one account to another
-	TransferTokens(ctx context.Context, operationID *fftypes.UUID, mint *fftypes.TokenTransfer) error
+	TransferTokens(ctx context.Context, opID *fftypes.UUID, poolLocator string, transfer *core.TokenTransfer) error
+
+	// TokenApproval approves an operator to transfer tokens on the owner's behalf
+	TokensApproval(ctx context.Context, opID *fftypes.UUID, poolLocator string, approval *core.TokenApproval) error
 }
 
 // Callbacks is the interface provided to the tokens plugin, to allow it to pass events back to firefly.
@@ -59,28 +67,84 @@ type Plugin interface {
 // has completed. However, it does not matter if these events are workload balance between the firefly core
 // cluster instances of the node.
 type Callbacks interface {
-	// TokensOpUpdate notifies firefly of an update to this plugin's operation within a transaction.
+	// TokenOpUpdate notifies firefly of an update to this plugin's operation within a transaction.
 	// Only success/failure and errorMessage (for errors) are modeled.
 	// opOutput can be used to add opaque protocol specific JSON from the plugin (protocol transaction ID etc.)
 	// Note this is an optional hook information, and stored separately to the confirmation of the actual event that was being submitted/sequenced.
 	// Only the party submitting the transaction will see this data.
 	//
-	// Error should will only be returned in shutdown scenarios
-	TokensOpUpdate(plugin Plugin, operationID *fftypes.UUID, txState fftypes.OpStatus, errorMessage string, opOutput fftypes.JSONObject) error
+	// Error should only be returned in shutdown scenarios
+	TokenOpUpdate(plugin Plugin, operationID *fftypes.UUID, txState core.OpStatus, blockchainTXID, errorMessage string, opOutput fftypes.JSONObject)
 
 	// TokenPoolCreated notifies on the creation of a new token pool, which might have been
 	// submitted by us, or by any other authorized party in the network.
 	//
-	// Error should will only be returned in shutdown scenarios
-	TokenPoolCreated(plugin Plugin, pool *fftypes.TokenPool, protocolTxID string, additionalInfo fftypes.JSONObject) error
+	// Error should only be returned in shutdown scenarios
+	TokenPoolCreated(plugin Plugin, pool *TokenPool) error
 
 	// TokensTransferred notifies on a transfer between token accounts.
 	//
+	// Error should only be returned in shutdown scenarios
+	TokensTransferred(plugin Plugin, transfer *TokenTransfer) error
+
+	// TokensApproved notifies on a token approval
+	//
 	// Error should will only be returned in shutdown scenarios
-	TokensTransferred(plugin Plugin, transfer *fftypes.TokenTransfer, protocolTxID string, additionalInfo fftypes.JSONObject) error
+	TokensApproved(plugin Plugin, approval *TokenApproval) error
 }
 
-// Capabilities the supported featureset of the tokens
-// interface implemented by the plugin, with the specified config
+// Capabilities is the supported featureset of the tokens interface implemented by the plugin, with the specified config
 type Capabilities struct {
+}
+
+// TokenPool is the set of data returned from the connector when a token pool is created.
+type TokenPool struct {
+	// Type is the type of tokens (fungible, non-fungible, etc) in this pool
+	Type core.TokenType
+
+	// PoolLocator is the ID assigned to this pool by the connector (must be unique for this connector)
+	PoolLocator string
+
+	// TX is the FireFly-assigned information to correlate this to a transaction (optional)
+	TX core.TransactionRef
+
+	// Connector is the configured name of this connector
+	Connector string
+
+	// Standard is the well-defined token standard that this pool conforms to (optional)
+	Standard string
+
+	// Decimals is the number of decimal places that this token has
+	Decimals int
+
+	// Symbol is the short token symbol, if the connector uses one (optional)
+	Symbol string
+
+	// Info is any other connector-specific info on the pool that may be worth saving (optional)
+	Info fftypes.JSONObject
+
+	// Event contains info on the underlying blockchain event for this pool creation
+	Event blockchain.Event
+}
+
+type TokenTransfer struct {
+	// Although not every field will be filled in, embed core.TokenTransfer to avoid duplicating lots of fields
+	// Notable fields NOT expected to be populated by plugins: Namespace, LocalID, Pool
+	core.TokenTransfer
+
+	// PoolLocator is the ID assigned to the token pool by the connector
+	PoolLocator string
+
+	// Event contains info on the underlying blockchain event for this transfer
+	Event blockchain.Event
+}
+
+type TokenApproval struct {
+	core.TokenApproval
+
+	// PoolLocator is the ID assigned to the token pool by the connector
+	PoolLocator string
+
+	// Event contains info on the underlying blockchain event for this transfer
+	Event blockchain.Event
 }

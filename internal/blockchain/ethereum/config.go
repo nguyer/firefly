@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -17,8 +17,9 @@
 package ethereum
 
 import (
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/config/wsconfig"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/ffresty"
+	"github.com/hyperledger/firefly-common/pkg/wsclient"
 )
 
 const (
@@ -26,13 +27,18 @@ const (
 	defaultBatchTimeout = 500
 	defaultPrefixShort  = "fly"
 	defaultPrefixLong   = "firefly"
+	defaultFromBlock    = "0"
+
+	defaultAddressResolverMethod        = "GET"
+	defaultAddressResolverResponseField = "address"
+	defaultAddressResolverCacheSize     = 1000
+	defaultAddressResolverCacheTTL      = "24h"
 )
 
 const (
 	// EthconnectConfigKey is a sub-key in the config to contain all the ethconnect specific config,
 	EthconnectConfigKey = "ethconnect"
-
-	// EthconnectConfigInstancePath is the /contracts/0x12345 or /instances/0x12345 path of the REST API exposed by ethconnect for the contract
+	// EthconnectConfigInstancePath is the ethereum address of the contract
 	EthconnectConfigInstancePath = "instance"
 	// EthconnectConfigTopic is the websocket listen topic that the node should register on, which is important if there are multiple
 	// nodes using a single ethconnect
@@ -41,22 +47,55 @@ const (
 	EthconnectConfigBatchSize = "batchSize"
 	// EthconnectConfigBatchTimeout is the batch timeout to configure on event streams, when auto-defining them
 	EthconnectConfigBatchTimeout = "batchTimeout"
-	// EthconnectConfigSkipEventstreamInit disables auto-configuration of event streams
-	EthconnectConfigSkipEventstreamInit = "skipEventstreamInit"
 	// EthconnectPrefixShort is used in the query string in requests to ethconnect
 	EthconnectPrefixShort = "prefixShort"
 	// EthconnectPrefixLong is used in HTTP headers in requests to ethconnect
 	EthconnectPrefixLong = "prefixLong"
+	// EthconnectConfigFromBlock is the configuration of the first block to listen to when creating the listener for the FireFly contract
+	EthconnectConfigFromBlock = "fromBlock"
+
+	// AddressResolverConfigKey is a sub-key in the config to contain an address resolver config.
+	AddressResolverConfigKey = "addressResolver"
+	// AddressResolverRetainOriginal when true the original pre-resolved string is retained after the lookup, and passed down to Ethconnect as the from address
+	AddressResolverRetainOriginal = "retainOriginal"
+	// AddressResolverMethod the HTTP method to use to call the address resolver (default GET)
+	AddressResolverMethod = "method"
+	// AddressResolverURLTemplate the URL go template string to use when calling the address resolver
+	AddressResolverURLTemplate = "urlTemplate"
+	// AddressResolverBodyTemplate the body go template string to use when calling the address resolver
+	AddressResolverBodyTemplate = "bodyTemplate"
+	// AddressResolverResponseField the name of a JSON field that is provided in the response, that contains the ethereum address (default "address")
+	AddressResolverResponseField = "responseField"
+	// AddressResolverCacheSize the size of the LRU cache
+	AddressResolverCacheSize = "cache.size"
+	// AddressResolverCacheTTL the TTL on cache entries
+	AddressResolverCacheTTL = "cache.ttl"
+
+	// FFTMConfigKey is a sub-key in the config that optionally contains FireFly transaction connection information
+	FFTMConfigKey = "fftm"
 )
 
-func (e *Ethereum) InitPrefix(prefix config.Prefix) {
-	ethconnectConf := prefix.SubPrefix(EthconnectConfigKey)
-	wsconfig.InitPrefix(ethconnectConf)
+func (e *Ethereum) InitConfig(config config.Section) {
+	ethconnectConf := config.SubSection(EthconnectConfigKey)
+	wsclient.InitConfig(ethconnectConf)
 	ethconnectConf.AddKnownKey(EthconnectConfigInstancePath)
 	ethconnectConf.AddKnownKey(EthconnectConfigTopic)
-	ethconnectConf.AddKnownKey(EthconnectConfigSkipEventstreamInit)
 	ethconnectConf.AddKnownKey(EthconnectConfigBatchSize, defaultBatchSize)
 	ethconnectConf.AddKnownKey(EthconnectConfigBatchTimeout, defaultBatchTimeout)
 	ethconnectConf.AddKnownKey(EthconnectPrefixShort, defaultPrefixShort)
 	ethconnectConf.AddKnownKey(EthconnectPrefixLong, defaultPrefixLong)
+	ethconnectConf.AddKnownKey(EthconnectConfigFromBlock, defaultFromBlock)
+
+	fftmConf := config.SubSection(FFTMConfigKey)
+	ffresty.InitConfig(fftmConf)
+
+	addressResolverConf := config.SubSection(AddressResolverConfigKey)
+	ffresty.InitConfig(addressResolverConf)
+	addressResolverConf.AddKnownKey(AddressResolverRetainOriginal)
+	addressResolverConf.AddKnownKey(AddressResolverMethod, defaultAddressResolverMethod)
+	addressResolverConf.AddKnownKey(AddressResolverURLTemplate)
+	addressResolverConf.AddKnownKey(AddressResolverBodyTemplate)
+	addressResolverConf.AddKnownKey(AddressResolverResponseField, defaultAddressResolverResponseField)
+	addressResolverConf.AddKnownKey(AddressResolverCacheSize, defaultAddressResolverCacheSize)
+	addressResolverConf.AddKnownKey(AddressResolverCacheTTL, defaultAddressResolverCacheTTL)
 }

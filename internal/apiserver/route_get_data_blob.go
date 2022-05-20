@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -18,28 +18,35 @@ package apiserver
 
 import (
 	"net/http"
+	"strconv"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
 )
 
 var getDataBlob = &oapispec.Route{
 	Name:   "getDataBlob",
-	Path:   "namespaces/{ns}/data/{dataid}/blob",
+	Path:   "data/{dataid}/blob",
 	Method: http.MethodGet,
 	PathParams: []*oapispec.PathParam{
-		{Name: "ns", ExampleFromConf: config.NamespacesDefault, Description: i18n.MsgTBD},
-		{Name: "dataid", Description: i18n.MsgTBD},
+		{Name: "dataid", Description: coremsgs.APIParamsBlobID},
 	},
 	QueryParams:     nil,
 	FilterFactory:   database.MessageQueryFactory,
-	Description:     i18n.MsgTBD,
+	Description:     coremsgs.APIEndpointsGetDataBlob,
 	JSONInputValue:  nil,
 	JSONOutputValue: func() interface{} { return []byte{} },
 	JSONOutputCodes: []int{http.StatusOK},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		return r.Or.Data().DownloadBLOB(r.Ctx, r.PP["ns"], r.PP["dataid"])
+		blob, reader, err := getOr(r.Ctx).Data().DownloadBlob(r.Ctx, extractNamespace(r.PP), r.PP["dataid"])
+		if err == nil {
+			r.ResponseHeaders.Set(core.HTTPHeadersBlobHashSHA256, blob.Hash.String())
+			if blob.Size > 0 {
+				r.ResponseHeaders.Set(core.HTTPHeadersBlobSize, strconv.FormatInt(blob.Size, 10))
+			}
+		}
+		return reader, nil
 	},
 }

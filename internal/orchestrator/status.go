@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -18,41 +18,114 @@ package orchestrator
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coreconfig"
+	"github.com/hyperledger/firefly/pkg/core"
+	"github.com/hyperledger/firefly/pkg/database"
 )
 
-func (or *orchestrator) GetStatus(ctx context.Context) (status *fftypes.NodeStatus, err error) {
-
-	orgKey := or.identity.GetOrgKey(ctx)
-	status = &fftypes.NodeStatus{
-		Node: fftypes.NodeStatusNode{
-			Name: config.GetString(config.NodeName),
-		},
-		Org: fftypes.NodeStatusOrg{
-			Name:     config.GetString(config.OrgName),
-			Identity: orgKey,
-		},
-		Defaults: fftypes.NodeStatusDefaults{
-			Namespace: config.GetString(config.NamespacesDefault),
-		},
+func (or *orchestrator) getPlugins() core.NodeStatusPlugins {
+	// Tokens can have more than one name, so they must be iterated over
+	tokensArray := make([]*core.NodeStatusPlugin, 0)
+	for name, plugin := range or.tokens {
+		tokensArray = append(tokensArray, &core.NodeStatusPlugin{
+			Name:       name,
+			PluginType: plugin.Name(),
+		})
 	}
 
-	org, err := or.database.GetOrganizationByName(ctx, status.Org.Name)
+	return core.NodeStatusPlugins{
+		Blockchain: []*core.NodeStatusPlugin{
+			{
+				PluginType: or.blockchain.Name(),
+			},
+		},
+		Database: []*core.NodeStatusPlugin{
+			{
+				PluginType: or.database.Name(),
+			},
+		},
+		DataExchange: []*core.NodeStatusPlugin{
+			{
+				PluginType: or.dataexchange.Name(),
+			},
+		},
+		Events: or.events.GetPlugins(),
+		Identity: []*core.NodeStatusPlugin{
+			{
+				PluginType: or.identityPlugin.Name(),
+			},
+		},
+		SharedStorage: []*core.NodeStatusPlugin{
+			{
+				PluginType: or.sharedstorage.Name(),
+			},
+		},
+		Tokens: tokensArray,
+	}
+}
+
+func (or *orchestrator) GetNodeUUID(ctx context.Context) (node *fftypes.UUID) {
+	if or.node != nil {
+		return or.node
+	}
+	status, err := or.GetStatus(ctx)
 	if err != nil {
-		return nil, err
+		log.L(or.ctx).Warnf("Failed to query local node UUID: %s", err)
+		return nil
 	}
+	if status.Node.Registered {
+		or.node = status.Node.ID
+	} else {
+		log.L(or.ctx).Infof("Node not yet registered")
+	}
+	return or.node
+}
+
+func (or *orchestrator) GetStatus(ctx context.Context) (status *core.NodeStatus, err error) {
+
+	org, err := or.identity.GetNodeOwnerOrg(ctx)
+	if err != nil {
+		log.L(ctx).Warnf("Failed to query local org for status: %s", err)
+	}
+	status = &core.NodeStatus{
+		Node: core.NodeStatusNode{
+			Name: config.GetString(coreconfig.NodeName),
+		},
+		Org: core.NodeStatusOrg{
+			Name: config.GetString(coreconfig.OrgName),
+		},
+		Defaults: core.NodeStatusDefaults{
+			Namespace: config.GetString(coreconfig.NamespacesDefault),
+		},
+		Plugins: or.getPlugins(),
+	}
+
 	if org != nil {
 		status.Org.Registered = true
 		status.Org.ID = org.ID
-		status.Org.Identity = org.Identity
-
-		node, err := or.database.GetNode(ctx, org.Identity, status.Node.Name)
+		status.Org.DID = org.DID
+		verifiers, _, err := or.networkmap.GetIdentityVerifiers(ctx, core.SystemNamespace, org.ID.String(), database.VerifierQueryFactory.NewFilter(ctx).And())
 		if err != nil {
 			return nil, err
 		}
+		status.Org.Verifiers = make([]*core.VerifierRef, len(verifiers))
+		for i, v := range verifiers {
+			status.Org.Verifiers[i] = &v.VerifierRef
+		}
 
+		node, _, err := or.identity.CachedIdentityLookupNilOK(ctx, fmt.Sprintf("%s%s", core.FireFlyNodeDIDPrefix, status.Node.Name))
+		if err != nil {
+			return nil, err
+		}
+		if node != nil && !node.Parent.Equals(org.ID) {
+			log.L(ctx).Errorf("Specified node name is in use by another org: %s", err)
+			node = nil
+		}
 		if node != nil {
 			status.Node.Registered = true
 			status.Node.ID = node.ID

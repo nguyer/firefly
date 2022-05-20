@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,8 +19,8 @@ package oapispec
 import (
 	"context"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
 	"github.com/hyperledger/firefly/pkg/database"
 )
 
@@ -51,6 +51,8 @@ type Route struct {
 	JSONInputMask []string
 	// JSONInputSchema is a custom schema definition, for the case where the auto-gen + mask isn't good enough
 	JSONInputSchema func(ctx context.Context) string
+	// JSONOutputSchema is a custom schema definition, for the case where the auto-gen + mask isn't good enough
+	JSONOutputSchema func(ctx context.Context) string
 	// JSONOutputValue is a function that returns a pointer to a structure to take JSON output
 	JSONOutputValue func() interface{}
 	// JSONOutputCodes is the success response code
@@ -61,6 +63,8 @@ type Route struct {
 	FormUploadHandler func(r *APIRequest) (output interface{}, err error)
 	// Deprecated whether this route is deprecated
 	Deprecated bool
+	// Tag a category identifier for this route in the generated OpenAPI spec
+	Tag string
 }
 
 // PathParam is a description of a path parameter
@@ -91,6 +95,8 @@ type QueryParam struct {
 	ExampleFromConf config.RootKey
 	// Description is a message key to a translatable description of the parameter
 	Description i18n.MessageKey
+	// Deprecated whether this param is deprecated
+	Deprecated bool
 }
 
 // FormParam is a description of a multi-part form parameter

@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -21,10 +21,12 @@ import (
 	"database/sql"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 var (
@@ -34,128 +36,88 @@ var (
 		"tx_id",
 		"optype",
 		"opstatus",
-		"member",
 		"plugin",
-		"backend_id",
 		"created",
 		"updated",
 		"error",
 		"input",
 		"output",
+		"retry_id",
 	}
 	opFilterFieldMap = map[string]string{
-		"tx":        "tx_id",
-		"type":      "optype",
-		"status":    "opstatus",
-		"backendid": "backend_id",
+		"tx":     "tx_id",
+		"type":   "optype",
+		"status": "opstatus",
+		"retry":  "retry_id",
 	}
 )
 
-func (s *SQLCommon) UpsertOperation(ctx context.Context, operation *fftypes.Operation, allowExisting bool) (err error) {
+const operationsTable = "operations"
 
+func (s *SQLCommon) InsertOperation(ctx context.Context, operation *core.Operation, hooks ...database.PostCompletionHook) (err error) {
 	ctx, tx, autoCommit, err := s.beginOrUseTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	existing := false
-	if allowExisting {
-		// Do a select within the transaction to detemine if the UUID already exists
-		opRows, _, err := s.queryTx(ctx, tx,
-			sq.Select("id").
-				From("operations").
-				Where(sq.Eq{"id": operation.ID}),
-		)
-		if err != nil {
-			return err
-		}
-
-		existing = opRows.Next()
-		opRows.Close()
-	}
-
-	if existing {
-		// Update the operation
-		if err = s.updateTx(ctx, tx,
-			sq.Update("operations").
-				Set("namespace", operation.Namespace).
-				Set("tx_id", operation.Transaction).
-				Set("optype", operation.Type).
-				Set("opstatus", operation.Status).
-				Set("member", operation.Member).
-				Set("plugin", operation.Plugin).
-				Set("backend_id", operation.BackendID).
-				Set("created", operation.Created).
-				Set("updated", operation.Updated).
-				Set("error", operation.Error).
-				Set("input", operation.Input).
-				Set("output", operation.Output).
-				Where(sq.Eq{"id": operation.ID}),
-			func() {
-				s.callbacks.UUIDCollectionNSEvent(database.CollectionOperations, fftypes.ChangeEventTypeUpdated, operation.Namespace, operation.ID)
-			},
-		); err != nil {
-			return err
-		}
-	} else {
-		if _, err = s.insertTx(ctx, tx,
-			sq.Insert("operations").
-				Columns(opColumns...).
-				Values(
-					operation.ID,
-					operation.Namespace,
-					operation.Transaction,
-					string(operation.Type),
-					string(operation.Status),
-					operation.Member,
-					operation.Plugin,
-					operation.BackendID,
-					operation.Created,
-					operation.Updated,
-					operation.Error,
-					operation.Input,
-					operation.Output,
-				),
-			func() {
-				s.callbacks.UUIDCollectionNSEvent(database.CollectionOperations, fftypes.ChangeEventTypeCreated, operation.Namespace, operation.ID)
-			},
-		); err != nil {
-			return err
-		}
+	if _, err = s.insertTx(ctx, operationsTable, tx,
+		sq.Insert(operationsTable).
+			Columns(opColumns...).
+			Values(
+				operation.ID,
+				operation.Namespace,
+				operation.Transaction,
+				string(operation.Type),
+				string(operation.Status),
+				operation.Plugin,
+				operation.Created,
+				operation.Updated,
+				operation.Error,
+				operation.Input,
+				operation.Output,
+				operation.Retry,
+			),
+		func() {
+			s.callbacks.UUIDCollectionNSEvent(database.CollectionOperations, core.ChangeEventTypeCreated, operation.Namespace, operation.ID)
+			for _, hook := range hooks {
+				hook()
+			}
+		},
+	); err != nil {
+		return err
 	}
 
 	return s.commitTx(ctx, tx, autoCommit)
 }
 
-func (s *SQLCommon) opResult(ctx context.Context, row *sql.Rows) (*fftypes.Operation, error) {
-	var op fftypes.Operation
+func (s *SQLCommon) opResult(ctx context.Context, row *sql.Rows) (*core.Operation, error) {
+	var op core.Operation
 	err := row.Scan(
 		&op.ID,
 		&op.Namespace,
 		&op.Transaction,
 		&op.Type,
 		&op.Status,
-		&op.Member,
 		&op.Plugin,
-		&op.BackendID,
 		&op.Created,
 		&op.Updated,
 		&op.Error,
 		&op.Input,
 		&op.Output,
+		&op.Retry,
 	)
 	if err != nil {
-		return nil, i18n.WrapError(ctx, err, i18n.MsgDBReadErr, "operations")
+		return nil, i18n.WrapError(ctx, err, coremsgs.MsgDBReadErr, operationsTable)
 	}
 	return &op, nil
 }
 
-func (s *SQLCommon) GetOperationByID(ctx context.Context, id *fftypes.UUID) (operation *fftypes.Operation, err error) {
+func (s *SQLCommon) GetOperationByID(ctx context.Context, id *fftypes.UUID) (operation *core.Operation, err error) {
 
-	rows, _, err := s.query(ctx,
+	rows, _, err := s.query(ctx, operationsTable,
 		sq.Select(opColumns...).
-			From("operations").
+			From(operationsTable).
 			Where(sq.Eq{"id": id}),
 	)
 	if err != nil {
@@ -176,20 +138,20 @@ func (s *SQLCommon) GetOperationByID(ctx context.Context, id *fftypes.UUID) (ope
 	return op, nil
 }
 
-func (s *SQLCommon) GetOperations(ctx context.Context, filter database.Filter) (operation []*fftypes.Operation, fr *database.FilterResult, err error) {
+func (s *SQLCommon) GetOperations(ctx context.Context, filter database.Filter) (operation []*core.Operation, fr *database.FilterResult, err error) {
 
-	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(opColumns...).From("operations"), filter, opFilterFieldMap, []string{"sequence"})
+	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(opColumns...).From(operationsTable), filter, opFilterFieldMap, []interface{}{"sequence"})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, tx, err := s.query(ctx, query)
+	rows, tx, err := s.query(ctx, operationsTable, query)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 
-	ops := []*fftypes.Operation{}
+	ops := []*core.Operation{}
 	for rows.Next() {
 		op, err := s.opResult(ctx, rows)
 		if err != nil {
@@ -198,10 +160,10 @@ func (s *SQLCommon) GetOperations(ctx context.Context, filter database.Filter) (
 		ops = append(ops, op)
 	}
 
-	return ops, s.queryRes(ctx, tx, "operations", fop, fi), err
+	return ops, s.queryRes(ctx, operationsTable, tx, fop, fi), err
 }
 
-func (s *SQLCommon) UpdateOperation(ctx context.Context, id *fftypes.UUID, update database.Update) (err error) {
+func (s *SQLCommon) UpdateOperation(ctx context.Context, ns string, id *fftypes.UUID, update database.Update) (err error) {
 
 	ctx, tx, autoCommit, err := s.beginOrUseTx(ctx)
 	if err != nil {
@@ -209,17 +171,32 @@ func (s *SQLCommon) UpdateOperation(ctx context.Context, id *fftypes.UUID, updat
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	query, err := s.buildUpdate(sq.Update("operations"), update, opFilterFieldMap)
+	query, err := s.buildUpdate(sq.Update(operationsTable), update, opFilterFieldMap)
 	if err != nil {
 		return err
 	}
 	query = query.Set("updated", fftypes.Now())
-	query = query.Where(sq.Eq{"id": id})
+	query = query.Where(sq.And{
+		sq.Eq{"id": id},
+		sq.Eq{"namespace": ns},
+	})
 
-	err = s.updateTx(ctx, tx, query, nil /* no change events for filter based updates */)
+	_, err = s.updateTx(ctx, operationsTable, tx, query, func() {
+		s.callbacks.UUIDCollectionNSEvent(database.CollectionOperations, core.ChangeEventTypeUpdated, ns, id)
+	})
 	if err != nil {
 		return err
 	}
 
 	return s.commitTx(ctx, tx, autoCommit)
+}
+
+func (s *SQLCommon) ResolveOperation(ctx context.Context, ns string, id *fftypes.UUID, status core.OpStatus, errorMsg string, output fftypes.JSONObject) (err error) {
+	update := database.OperationQueryFactory.NewUpdate(ctx).
+		Set("status", status).
+		Set("error", errorMsg)
+	if output != nil {
+		update.Set("output", output)
+	}
+	return s.UpdateOperation(ctx, ns, id, update)
 }

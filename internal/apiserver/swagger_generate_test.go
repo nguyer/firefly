@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -14,7 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build swagger
+//go:build reference
+// +build reference
 
 package apiserver
 
@@ -29,19 +30,22 @@ import (
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly/internal/coreconfig"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestDownloadSwaggerYAML(t *testing.T) {
+	config.Set(coreconfig.APIOASPanicOnMissingDescription, true)
 	as := &apiServer{}
-	handler := as.apiWrapper(as.swaggerHandler(routes, "http://localhost:12345"))
+	handler := as.apiWrapper(as.swaggerHandler(as.swaggerGenerator(routes, "http://localhost:5000")))
 	s := httptest.NewServer(http.HandlerFunc(handler))
 	defer s.Close()
 
 	res, err := http.Get(fmt.Sprintf("http://%s/api/swagger.yaml", s.Listener.Addr()))
 	assert.NoError(t, err)
-	assert.Equal(t, 200, res.StatusCode)
 	b, _ := ioutil.ReadAll(res.Body)
+	assert.Equal(t, 200, res.StatusCode, string(b))
 	doc, err := openapi3.NewLoader().LoadFromData(b)
 	assert.NoError(t, err)
 	err = doc.Validate(context.Background())

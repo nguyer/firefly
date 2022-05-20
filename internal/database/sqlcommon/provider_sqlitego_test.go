@@ -26,7 +26,7 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	migratedb "github.com/golang-migrate/migrate/v4/database"
 	"github.com/golang-migrate/migrate/v4/database/sqlite3"
-	"github.com/hyperledger/firefly/internal/config"
+	"github.com/hyperledger/firefly-common/pkg/config"
 	"github.com/hyperledger/firefly/mocks/databasemocks"
 	"github.com/hyperledger/firefly/pkg/database"
 	"github.com/stretchr/testify/assert"
@@ -39,7 +39,7 @@ import (
 type sqliteGoTestProvider struct {
 	SQLCommon
 
-	prefix       config.Prefix
+	config       config.Section
 	t            *testing.T
 	callbacks    *databasemocks.Callbacks
 	capabilities *database.Capabilities
@@ -51,17 +51,17 @@ func newSQLiteTestProvider(t *testing.T) (*sqliteGoTestProvider, func()) {
 		t:            t,
 		callbacks:    &databasemocks.Callbacks{},
 		capabilities: &database.Capabilities{},
-		prefix:       config.NewPluginConfig("unittest.db"),
+		config:       config.RootSection("unittest.db"),
 	}
-	tp.SQLCommon.InitPrefix(tp, tp.prefix)
+	tp.SQLCommon.InitConfig(tp, tp.config)
 	dir, err := ioutil.TempDir("", "")
 	assert.NoError(t, err)
-	tp.prefix.Set(SQLConfDatasourceURL, "file::memory:")
-	tp.prefix.Set(SQLConfMigrationsAuto, true)
-	tp.prefix.Set(SQLConfMigrationsDirectory, "../../../db/migrations/sqlite")
-	tp.prefix.Set(SQLConfMaxConnections, 1)
+	tp.config.Set(SQLConfDatasourceURL, "file::memory:")
+	tp.config.Set(SQLConfMigrationsAuto, true)
+	tp.config.Set(SQLConfMigrationsDirectory, "../../../db/migrations/sqlite")
+	tp.config.Set(SQLConfMaxConnections, 1)
 
-	err = tp.Init(context.Background(), tp, tp.prefix, tp.callbacks, tp.capabilities)
+	err = tp.Init(context.Background(), tp, tp.config, tp.callbacks, tp.capabilities)
 	assert.NoError(tp.t, err)
 
 	return tp, func() {
@@ -78,11 +78,14 @@ func (tp *sqliteGoTestProvider) MigrationsDir() string {
 	return "sqlite"
 }
 
-func (tp *sqliteGoTestProvider) PlaceholderFormat() sq.PlaceholderFormat {
-	return sq.Dollar
+func (psql *sqliteGoTestProvider) Features() SQLFeatures {
+	features := DefaultSQLProviderFeatures()
+	features.PlaceholderFormat = sq.Dollar
+	features.UseILIKE = false // Not supported
+	return features
 }
 
-func (tp *sqliteGoTestProvider) UpdateInsertForSequenceReturn(insert sq.InsertBuilder) (sq.InsertBuilder, bool) {
+func (tp *sqliteGoTestProvider) ApplyInsertQueryCustomizations(insert sq.InsertBuilder, requestConflictEmptyResult bool) (sq.InsertBuilder, bool) {
 	// Nothing required - QL supports the query for returning the generated ID, and we use that for the sequence
 	return insert, false
 }

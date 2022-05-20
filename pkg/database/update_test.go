@@ -18,7 +18,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -29,7 +30,7 @@ func TestUpdateBuilderOK(t *testing.T) {
 	u.Set("sequence", 12345).
 		Set("cid", uuid).
 		Set("author", "0x1234").
-		Set("type", fftypes.MessageTypePrivate)
+		Set("type", core.MessageTypePrivate)
 	assert.False(t, u.IsEmpty())
 	ui, err := u.Finalize()
 	assert.NoError(t, err)
@@ -39,13 +40,13 @@ func TestUpdateBuilderOK(t *testing.T) {
 func TestUpdateBuilderBadField(t *testing.T) {
 	u := MessageQueryFactory.NewUpdate(context.Background()).Set("wrong", 12345)
 	_, err := u.Finalize()
-	assert.Regexp(t, "FF10148.*wrong", err)
+	assert.Regexp(t, "FF00142.*wrong", err)
 }
 
 func TestUpdateBuilderBadValue(t *testing.T) {
 	u := MessageQueryFactory.NewUpdate(context.Background()).Set("id", map[bool]bool{true: false})
 	_, err := u.Finalize()
-	assert.Regexp(t, "FF10149.*id", err)
+	assert.Regexp(t, "FF00143.*id", err)
 }
 
 func TestUpdateBuilderGetFields(t *testing.T) {

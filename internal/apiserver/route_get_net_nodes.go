@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,10 +19,10 @@ package apiserver
 import (
 	"net/http"
 
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 var getNetworkNodes = &oapispec.Route{
@@ -31,12 +31,12 @@ var getNetworkNodes = &oapispec.Route{
 	Method:          http.MethodGet,
 	PathParams:      nil,
 	QueryParams:     nil,
-	FilterFactory:   database.NodeQueryFactory,
-	Description:     i18n.MsgTBD,
+	FilterFactory:   database.IdentityQueryFactory,
+	Description:     coremsgs.APIEndpointsGetNetworkNodes,
 	JSONInputValue:  nil,
-	JSONOutputValue: func() interface{} { return []*fftypes.Node{} },
+	JSONOutputValue: func() interface{} { return []*core.Identity{} },
 	JSONOutputCodes: []int{http.StatusOK},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		return filterResult(r.Or.NetworkMap().GetNodes(r.Ctx, r.Filter))
+		return filterResult(getOr(r.Ctx).NetworkMap().GetNodes(r.Ctx, r.Filter))
 	},
 }

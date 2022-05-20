@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -21,10 +21,12 @@ import (
 	"database/sql"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 var (
@@ -38,6 +40,9 @@ var (
 		"created",
 		"blob_hash",
 		"blob_public",
+		"blob_name",
+		"blob_size",
+		"value_size",
 	}
 	dataColumnsWithValue = append(append([]string{}, dataColumnsNoValue...), "value")
 	dataFilterFieldMap   = map[string]string{
@@ -46,30 +51,113 @@ var (
 		"datatype.version": "datatype_version",
 		"blob.hash":        "blob_hash",
 		"blob.public":      "blob_public",
+		"blob.name":        "blob_name",
+		"blob.size":        "blob_size",
 	}
 )
 
-func (s *SQLCommon) UpsertData(ctx context.Context, data *fftypes.Data, allowExisting, allowHashUpdate bool) (err error) {
+const dataTable = "data"
+
+func (s *SQLCommon) attemptDataUpdate(ctx context.Context, tx *txWrapper, data *core.Data) (int64, error) {
+	datatype := data.Datatype
+	if datatype == nil {
+		datatype = &core.DatatypeRef{}
+	}
+	blob := data.Blob
+	if blob == nil {
+		blob = &core.BlobRef{}
+	}
+	return s.updateTx(ctx, dataTable, tx,
+		sq.Update(dataTable).
+			Set("validator", string(data.Validator)).
+			Set("namespace", data.Namespace).
+			Set("datatype_name", datatype.Name).
+			Set("datatype_version", datatype.Version).
+			Set("hash", data.Hash).
+			Set("created", data.Created).
+			Set("blob_hash", blob.Hash).
+			Set("blob_public", blob.Public).
+			Set("blob_name", blob.Name).
+			Set("blob_size", blob.Size).
+			Set("value_size", data.ValueSize).
+			Set("value", data.Value).
+			Where(sq.Eq{
+				"id":   data.ID,
+				"hash": data.Hash,
+			}),
+		func() {
+			s.callbacks.UUIDCollectionNSEvent(database.CollectionData, core.ChangeEventTypeUpdated, data.Namespace, data.ID)
+		})
+}
+
+func (s *SQLCommon) setDataInsertValues(query sq.InsertBuilder, data *core.Data) sq.InsertBuilder {
+	datatype := data.Datatype
+	if datatype == nil {
+		datatype = &core.DatatypeRef{}
+	}
+	blob := data.Blob
+	if blob == nil {
+		blob = &core.BlobRef{}
+	}
+	return query.Values(
+		data.ID,
+		string(data.Validator),
+		data.Namespace,
+		datatype.Name,
+		datatype.Version,
+		data.Hash,
+		data.Created,
+		blob.Hash,
+		blob.Public,
+		blob.Name,
+		blob.Size,
+		data.ValueSize,
+		data.Value,
+	)
+}
+
+func (s *SQLCommon) attemptDataInsert(ctx context.Context, tx *txWrapper, data *core.Data, requestConflictEmptyResult bool) (int64, error) {
+	return s.insertTxExt(ctx, dataTable, tx,
+		s.setDataInsertValues(sq.Insert(dataTable).Columns(dataColumnsWithValue...), data),
+		func() {
+			s.callbacks.UUIDCollectionNSEvent(database.CollectionData, core.ChangeEventTypeCreated, data.Namespace, data.ID)
+		}, requestConflictEmptyResult)
+}
+
+func (s *SQLCommon) UpsertData(ctx context.Context, data *core.Data, optimization database.UpsertOptimization) (err error) {
 	ctx, tx, autoCommit, err := s.beginOrUseTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	existing := false
-	if allowExisting {
-		// Do a select within the transaction to detemine if the UUID already exists
-		dataRows, _, err := s.queryTx(ctx, tx,
+	// This is a performance critical function, as we stream data into the database for every message, in every batch.
+	//
+	// First attempt the operation based on the optimization passed in.
+	// The expectation is that the optimization will hit almost all of the time,
+	// as only recovery paths require us to go down the un-optimized route.
+	optimized := false
+	if optimization == database.UpsertOptimizationNew {
+		_, opErr := s.attemptDataInsert(ctx, tx, data, true /* we want a failure here we can progress past */)
+		optimized = opErr == nil
+	} else if optimization == database.UpsertOptimizationExisting {
+		rowsAffected, opErr := s.attemptDataUpdate(ctx, tx, data)
+		optimized = opErr == nil && rowsAffected == 1
+	}
+
+	if !optimized {
+		// Do a select within the transaction to determine if the UUID already exists
+		dataRows, _, err := s.queryTx(ctx, dataTable, tx,
 			sq.Select("hash").
-				From("data").
+				From(dataTable).
 				Where(sq.Eq{"id": data.ID}),
 		)
 		if err != nil {
 			return err
 		}
 
-		existing = dataRows.Next()
-		if existing && !allowHashUpdate {
+		existing := dataRows.Next()
+		if existing {
 			var hash *fftypes.Bytes32
 			_ = dataRows.Scan(&hash)
 			if !fftypes.SafeHashCompare(hash, data.Hash) {
@@ -79,69 +167,61 @@ func (s *SQLCommon) UpsertData(ctx context.Context, data *fftypes.Data, allowExi
 			}
 		}
 		dataRows.Close()
-	}
 
-	datatype := data.Datatype
-	if datatype == nil {
-		datatype = &fftypes.DatatypeRef{}
-	}
-
-	blob := data.Blob
-	if blob == nil {
-		blob = &fftypes.BlobRef{}
-	}
-
-	if existing {
-		// Update the data
-		if err = s.updateTx(ctx, tx,
-			sq.Update("data").
-				Set("validator", string(data.Validator)).
-				Set("namespace", data.Namespace).
-				Set("datatype_name", datatype.Name).
-				Set("datatype_version", datatype.Version).
-				Set("hash", data.Hash).
-				Set("created", data.Created).
-				Set("blob_hash", blob.Hash).
-				Set("blob_public", blob.Public).
-				Set("value", data.Value).
-				Where(sq.Eq{"id": data.ID}),
-			func() {
-				s.callbacks.UUIDCollectionNSEvent(database.CollectionData, fftypes.ChangeEventTypeUpdated, data.Namespace, data.ID)
-			},
-		); err != nil {
-			return err
-		}
-	} else {
-		if _, err = s.insertTx(ctx, tx,
-			sq.Insert("data").
-				Columns(dataColumnsWithValue...).
-				Values(
-					data.ID,
-					string(data.Validator),
-					data.Namespace,
-					datatype.Name,
-					datatype.Version,
-					data.Hash,
-					data.Created,
-					blob.Hash,
-					blob.Public,
-					data.Value,
-				),
-			func() {
-				s.callbacks.UUIDCollectionNSEvent(database.CollectionData, fftypes.ChangeEventTypeCreated, data.Namespace, data.ID)
-			},
-		); err != nil {
-			return err
+		if existing {
+			if _, err = s.attemptDataUpdate(ctx, tx, data); err != nil {
+				return err
+			}
+		} else {
+			if _, err = s.attemptDataInsert(ctx, tx, data, false); err != nil {
+				return err
+			}
 		}
 	}
 
 	return s.commitTx(ctx, tx, autoCommit)
 }
 
-func (s *SQLCommon) dataResult(ctx context.Context, row *sql.Rows, withValue bool) (*fftypes.Data, error) {
-	data := fftypes.Data{
-		Datatype: &fftypes.DatatypeRef{},
-		Blob:     &fftypes.BlobRef{},
+func (s *SQLCommon) InsertDataArray(ctx context.Context, dataArray core.DataArray) (err error) {
+
+	ctx, tx, autoCommit, err := s.beginOrUseTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer s.rollbackTx(ctx, tx, autoCommit)
+
+	if s.features.MultiRowInsert {
+		query := sq.Insert(dataTable).Columns(dataColumnsWithValue...)
+		for _, data := range dataArray {
+			query = s.setDataInsertValues(query, data)
+		}
+		sequences := make([]int64, len(dataArray))
+		err := s.insertTxRows(ctx, dataTable, tx, query, func() {
+			for _, data := range dataArray {
+				s.callbacks.UUIDCollectionNSEvent(database.CollectionData, core.ChangeEventTypeCreated, data.Namespace, data.ID)
+			}
+		}, sequences, true /* we want the caller to be able to retry with individual upserts */)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Fall back to individual inserts grouped in a TX
+		for _, data := range dataArray {
+			_, err := s.attemptDataInsert(ctx, tx, data, false)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return s.commitTx(ctx, tx, autoCommit)
+
+}
+
+func (s *SQLCommon) dataResult(ctx context.Context, row *sql.Rows, withValue bool) (*core.Data, error) {
+	data := core.Data{
+		Datatype: &core.DatatypeRef{},
+		Blob:     &core.BlobRef{},
 	}
 	results := []interface{}{
 		&data.ID,
@@ -153,6 +233,9 @@ func (s *SQLCommon) dataResult(ctx context.Context, row *sql.Rows, withValue boo
 		&data.Created,
 		&data.Blob.Hash,
 		&data.Blob.Public,
+		&data.Blob.Name,
+		&data.Blob.Size,
+		&data.ValueSize,
 	}
 	if withValue {
 		results = append(results, &data.Value)
@@ -165,12 +248,12 @@ func (s *SQLCommon) dataResult(ctx context.Context, row *sql.Rows, withValue boo
 		data.Datatype = nil
 	}
 	if err != nil {
-		return nil, i18n.WrapError(ctx, err, i18n.MsgDBReadErr, "data")
+		return nil, i18n.WrapError(ctx, err, coremsgs.MsgDBReadErr, dataTable)
 	}
 	return &data, nil
 }
 
-func (s *SQLCommon) GetDataByID(ctx context.Context, id *fftypes.UUID, withValue bool) (message *fftypes.Data, err error) {
+func (s *SQLCommon) GetDataByID(ctx context.Context, id *fftypes.UUID, withValue bool) (message *core.Data, err error) {
 
 	var cols []string
 	if withValue {
@@ -178,9 +261,9 @@ func (s *SQLCommon) GetDataByID(ctx context.Context, id *fftypes.UUID, withValue
 	} else {
 		cols = dataColumnsNoValue
 	}
-	rows, _, err := s.query(ctx,
+	rows, _, err := s.query(ctx, dataTable,
 		sq.Select(cols...).
-			From("data").
+			From(dataTable).
 			Where(sq.Eq{"id": id}),
 	)
 	if err != nil {
@@ -201,20 +284,20 @@ func (s *SQLCommon) GetDataByID(ctx context.Context, id *fftypes.UUID, withValue
 	return data, nil
 }
 
-func (s *SQLCommon) GetData(ctx context.Context, filter database.Filter) (message []*fftypes.Data, res *database.FilterResult, err error) {
+func (s *SQLCommon) GetData(ctx context.Context, filter database.Filter) (message core.DataArray, res *database.FilterResult, err error) {
 
-	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(dataColumnsWithValue...).From("data"), filter, dataFilterFieldMap, []string{"sequence"})
+	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(dataColumnsWithValue...).From(dataTable), filter, dataFilterFieldMap, []interface{}{"sequence"})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, tx, err := s.query(ctx, query)
+	rows, tx, err := s.query(ctx, dataTable, query)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 
-	data := []*fftypes.Data{}
+	data := core.DataArray{}
 	for rows.Next() {
 		d, err := s.dataResult(ctx, rows, true)
 		if err != nil {
@@ -223,37 +306,37 @@ func (s *SQLCommon) GetData(ctx context.Context, filter database.Filter) (messag
 		data = append(data, d)
 	}
 
-	return data, s.queryRes(ctx, tx, "data", fop, fi), err
+	return data, s.queryRes(ctx, dataTable, tx, fop, fi), err
 
 }
 
-func (s *SQLCommon) GetDataRefs(ctx context.Context, filter database.Filter) (message fftypes.DataRefs, res *database.FilterResult, err error) {
+func (s *SQLCommon) GetDataRefs(ctx context.Context, filter database.Filter) (message core.DataRefs, res *database.FilterResult, err error) {
 
-	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select("id", "hash").From("data"), filter, dataFilterFieldMap, []string{"sequence"})
+	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select("id", "hash").From(dataTable), filter, dataFilterFieldMap, []interface{}{"sequence"})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, tx, err := s.query(ctx, query)
+	rows, tx, err := s.query(ctx, dataTable, query)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 
-	refs := fftypes.DataRefs{}
+	refs := core.DataRefs{}
 	for rows.Next() {
-		ref := fftypes.DataRef{}
+		ref := core.DataRef{}
 		err := rows.Scan(
 			&ref.ID,
 			&ref.Hash,
 		)
 		if err != nil {
-			return nil, nil, i18n.WrapError(ctx, err, i18n.MsgDBReadErr, "data")
+			return nil, nil, i18n.WrapError(ctx, err, coremsgs.MsgDBReadErr, dataTable)
 		}
 		refs = append(refs, &ref)
 	}
 
-	return refs, s.queryRes(ctx, tx, "data", fop, fi), err
+	return refs, s.queryRes(ctx, dataTable, tx, fop, fi), err
 
 }
 
@@ -265,13 +348,13 @@ func (s *SQLCommon) UpdateData(ctx context.Context, id *fftypes.UUID, update dat
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	query, err := s.buildUpdate(sq.Update("data"), update, dataFilterFieldMap)
+	query, err := s.buildUpdate(sq.Update(dataTable), update, dataFilterFieldMap)
 	if err != nil {
 		return err
 	}
 	query = query.Where(sq.Eq{"id": id})
 
-	err = s.updateTx(ctx, tx, query, nil /* no change events for filter based updates */)
+	_, err = s.updateTx(ctx, dataTable, tx, query, nil /* no change events for filter based updates */)
 	if err != nil {
 		return err
 	}

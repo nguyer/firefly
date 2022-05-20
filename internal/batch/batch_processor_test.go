@@ -1,51 +1,65 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in comdiliance with the License.
+// you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or imdilied.
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 package batch
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/hyperledger/firefly/internal/log"
-	"github.com/hyperledger/firefly/internal/retry"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly-common/pkg/retry"
+	"github.com/hyperledger/firefly/internal/coreconfig"
+	"github.com/hyperledger/firefly/internal/txcommon"
 	"github.com/hyperledger/firefly/mocks/databasemocks"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/mocks/datamocks"
+	"github.com/hyperledger/firefly/mocks/sysmessagingmocks"
+	"github.com/hyperledger/firefly/mocks/txcommonmocks"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-func newTestBatchProcessor(dispatch DispatchHandler) (*databasemocks.Plugin, *batchProcessor) {
-	mdi := &databasemocks.Plugin{}
-	bp := newBatchProcessor(context.Background(), mdi, &batchProcessorConf{
-		namespace:          "ns1",
-		identity:           fftypes.Identity{Author: "did:firefly:org/abcd", Key: "0x12345"},
-		dispatch:           dispatch,
-		processorQuiescing: func() {},
-		Options: Options{
+func newTestBatchProcessor(t *testing.T, dispatch DispatchHandler) (func(), *databasemocks.Plugin, *batchProcessor) {
+	bm, cancel := newTestBatchManager(t)
+	mdi := bm.database.(*databasemocks.Plugin)
+	mni := bm.ni.(*sysmessagingmocks.LocalNodeInfo)
+	mdm := bm.data.(*datamocks.Manager)
+	txHelper := txcommon.NewTransactionHelper(mdi, mdm)
+	mni.On("GetNodeUUID", mock.Anything).Return(fftypes.NewUUID()).Maybe()
+	bp := newBatchProcessor(bm, &batchProcessorConf{
+		namespace: "ns1",
+		txType:    core.TransactionTypeBatchPin,
+		signer:    core.SignerRef{Author: "did:firefly:org/abcd", Key: "0x12345"},
+		dispatch:  dispatch,
+		DispatcherOptions: DispatcherOptions{
 			BatchMaxSize:   10,
-			BatchTimeout:   10 * time.Millisecond,
-			DisposeTimeout: 20 * time.Millisecond,
+			BatchMaxBytes:  1024 * 1024,
+			BatchTimeout:   100 * time.Millisecond,
+			DisposeTimeout: 200 * time.Millisecond,
 		},
 	}, &retry.Retry{
 		InitialDelay: 1 * time.Microsecond,
 		MaximumDelay: 1 * time.Microsecond,
-	})
-	return mdi, bp
+	}, txHelper)
+	bp.txHelper = &txcommonmocks.Helper{}
+	return cancel, mdi, bp
 }
 
 func mockRunAsGroupPassthrough(mdi *databasemocks.Plugin) {
@@ -58,189 +72,551 @@ func mockRunAsGroupPassthrough(mdi *databasemocks.Plugin) {
 
 func TestUnfilledBatch(t *testing.T) {
 	log.SetLevel("debug")
+	coreconfig.Reset()
 
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-
-	dispatched := []*fftypes.Batch{}
-	mdi, bp := newTestBatchProcessor(func(c context.Context, b *fftypes.Batch, s []*fftypes.Bytes32) error {
-		dispatched = append(dispatched, b)
-		wg.Done()
+	dispatched := make(chan *DispatchState)
+	cancel, mdi, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
+		dispatched <- state
 		return nil
 	})
+	defer cancel()
+
 	mockRunAsGroupPassthrough(mdi)
 	mdi.On("UpdateMessages", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	mdi.On("UpsertBatch", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	mdi.On("UpdateBatch", mock.Anything, mock.Anything).Return(nil)
 
-	// Generate the work the work
-	work := make([]*batchWork, 5)
-	for i := 0; i < 5; i++ {
-		msgid := fftypes.NewUUID()
-		work[i] = &batchWork{
-			msg:        &fftypes.Message{Header: fftypes.MessageHeader{ID: msgid}},
-			dispatched: make(chan *batchDispatch),
-		}
-	}
+	mth := bp.txHelper.(*txcommonmocks.Helper)
+	mth.On("SubmitNewTransaction", mock.Anything, "ns1", core.TransactionTypeBatchPin).Return(fftypes.NewUUID(), nil)
 
-	// Kick off a go routine to consume the confirmations
+	mdm := bp.data.(*datamocks.Manager)
+	mdm.On("UpdateMessageIfCached", mock.Anything, mock.Anything).Return()
+
+	// Dispatch the work
 	go func() {
 		for i := 0; i < 5; i++ {
-			<-work[i].dispatched
+			msgid := fftypes.NewUUID()
+			bp.newWork <- &batchWork{
+				msg: &core.Message{Header: core.MessageHeader{ID: msgid}, Sequence: int64(1000 + i)},
+			}
 		}
-		wg.Done()
 	}()
-
-	// Dispatch the work
-	for i := 0; i < 5; i++ {
-		bp.newWork <- work[i]
-	}
 
 	// Wait for the confirmations, and the dispatch
-	wg.Wait()
+	batch := <-dispatched
 
 	// Check we got all the messages in a single batch
-	assert.Equal(t, len(dispatched[0].Payload.Messages), 5)
+	assert.Equal(t, 5, len(batch.Messages))
 
-	bp.close()
-	bp.waitClosed()
+	bp.cancelCtx()
+	<-bp.done
 
+	mdm.AssertExpectations(t)
+	mdi.AssertExpectations(t)
+	mth.AssertExpectations(t)
 }
 
-func TestFilledBatchSlowPersistence(t *testing.T) {
+func TestBatchSizeOverflow(t *testing.T) {
 	log.SetLevel("debug")
+	coreconfig.Reset()
 
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-
-	dispatched := []*fftypes.Batch{}
-	mdi, bp := newTestBatchProcessor(func(c context.Context, b *fftypes.Batch, s []*fftypes.Bytes32) error {
-		dispatched = append(dispatched, b)
-		wg.Done()
+	dispatched := make(chan *DispatchState)
+	cancel, mdi, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
+		dispatched <- state
 		return nil
 	})
-	bp.conf.BatchTimeout = 1 * time.Hour // Must fill the batch
-	mockUpsert := mdi.On("UpsertBatch", mock.Anything, mock.Anything, mock.Anything)
-	mockUpsert.ReturnArguments = mock.Arguments{nil}
-	unblockPersistence := make(chan time.Time)
-	mockUpsert.WaitFor = unblockPersistence
+	defer cancel()
+	bp.conf.BatchMaxBytes = batchSizeEstimateBase + (&core.Message{}).EstimateSize(false) + 100
 	mockRunAsGroupPassthrough(mdi)
 	mdi.On("UpdateMessages", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	mdi.On("UpdateBatch", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	mdi.On("UpsertBatch", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	// Generate the work the work
-	work := make([]*batchWork, 10)
-	for i := 0; i < 10; i++ {
-		msgid := fftypes.NewUUID()
-		if i%2 == 0 {
-			work[i] = &batchWork{
-				msg:        &fftypes.Message{Header: fftypes.MessageHeader{ID: msgid}},
-				dispatched: make(chan *batchDispatch),
-			}
-		} else {
-			work[i] = &batchWork{
-				data:       []*fftypes.Data{{ID: msgid}},
-				dispatched: make(chan *batchDispatch),
-			}
-		}
-	}
+	mth := bp.txHelper.(*txcommonmocks.Helper)
+	mth.On("SubmitNewTransaction", mock.Anything, "ns1", core.TransactionTypeBatchPin).Return(fftypes.NewUUID(), nil)
 
-	// Kick off a go routine to consume the confirmations
-	go func() {
-		for i := 0; i < 10; i++ {
-			<-work[i].dispatched
-		}
-		wg.Done()
-	}()
+	mdm := bp.data.(*datamocks.Manager)
+	mdm.On("UpdateMessageIfCached", mock.Anything, mock.Anything).Return()
 
 	// Dispatch the work
-	for i := 0; i < 10; i++ {
-		bp.newWork <- work[i]
-	}
+	msgIDs := []*fftypes.UUID{fftypes.NewUUID(), fftypes.NewUUID()}
+	go func() {
+		for i := 0; i < 2; i++ {
+			bp.newWork <- &batchWork{
+				msg: &core.Message{Header: core.MessageHeader{ID: msgIDs[i]}, Sequence: int64(1000 + i)},
+			}
+		}
+	}()
 
-	// Unblock the dispatch
-	time.Sleep(10 * time.Millisecond)
-	mockUpsert.WaitFor = nil
-	unblockPersistence <- time.Now() // First call to write the first entry in the batch
+	// Wait for the confirmations, and the dispatch
+	batch1 := <-dispatched
+	batch2 := <-dispatched
 
-	// Wait for comdiletion
-	wg.Wait()
+	// Check we got all messages across two batches
+	assert.Equal(t, 1, len(batch1.Messages))
+	assert.Equal(t, msgIDs[0], batch1.Messages[0].Header.ID)
+	assert.Equal(t, 1, len(batch2.Messages))
+	assert.Equal(t, msgIDs[1], batch2.Messages[0].Header.ID)
 
-	// Check we got all the messages in a single batch
-	assert.Equal(t, len(dispatched[0].Payload.Messages), 5)
-	assert.Equal(t, len(dispatched[0].Payload.Data), 5)
+	bp.cancelCtx()
+	<-bp.done
 
-	bp.close()
-	bp.waitClosed()
-
+	mdi.AssertExpectations(t)
+	mth.AssertExpectations(t)
+	mdm.AssertExpectations(t)
 }
 
 func TestCloseToUnblockDispatch(t *testing.T) {
-	_, bp := newTestBatchProcessor(func(c context.Context, b *fftypes.Batch, s []*fftypes.Bytes32) error {
+	cancel, _, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
 		return fmt.Errorf("pop")
 	})
-	bp.close()
-	bp.dispatchBatch(&fftypes.Batch{}, []*fftypes.Bytes32{})
+	defer cancel()
+	bp.cancelCtx()
+	bp.dispatchBatch(&DispatchState{})
+	<-bp.done
 }
 
 func TestCloseToUnblockUpsertBatch(t *testing.T) {
 
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
-	mdi, bp := newTestBatchProcessor(func(c context.Context, b *fftypes.Batch, s []*fftypes.Bytes32) error {
+	cancel, mdi, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
 		return nil
 	})
+	defer cancel()
 	bp.retry.MaximumDelay = 1 * time.Microsecond
+	bp.conf.BatchMaxSize = 1
 	bp.conf.BatchTimeout = 100 * time.Second
 	mockRunAsGroupPassthrough(mdi)
-	mdi.On("UpdateMessages", mock.Anything, mock.Anything, mock.Anything).Return(nil)
-	mup := mdi.On("UpsertBatch", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("pop"))
 	waitForCall := make(chan bool)
-	mup.RunFn = func(a mock.Arguments) {
-		waitForCall <- true
-		<-waitForCall
-	}
+	mth := bp.txHelper.(*txcommonmocks.Helper)
+	mth.On("SubmitNewTransaction", mock.Anything, "ns1", core.TransactionTypeBatchPin).
+		Run(func(a mock.Arguments) {
+			waitForCall <- true
+			<-waitForCall
+		}).
+		Return(nil, fmt.Errorf("pop"))
 
-	// Generate the work the work
+	// Generate the work
 	msgid := fftypes.NewUUID()
-	work := &batchWork{
-		msg:        &fftypes.Message{Header: fftypes.MessageHeader{ID: msgid}},
-		dispatched: make(chan *batchDispatch),
-	}
-
-	// Dispatch the work
-	bp.newWork <- work
+	go func() {
+		bp.newWork <- &batchWork{
+			msg: &core.Message{Header: core.MessageHeader{ID: msgid}, Sequence: int64(1000)},
+		}
+	}()
 
 	// Ensure the mock has been run
 	<-waitForCall
 	close(waitForCall)
 
 	// Close to unblock
-	bp.close()
-	bp.waitClosed()
-
+	bp.cancelCtx()
+	<-bp.done
 }
 
-func TestCalcPinsFail(t *testing.T) {
-	_, bp := newTestBatchProcessor(func(c context.Context, b *fftypes.Batch, s []*fftypes.Bytes32) error {
+func TestInsertNewNonceFail(t *testing.T) {
+	cancel, _, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
 		return nil
 	})
-	defer bp.close()
+	defer cancel()
+	bp.cancelCtx()
 	mdi := bp.database.(*databasemocks.Plugin)
-	mdi.On("UpsertNonceNext", mock.Anything, mock.Anything).Return(fmt.Errorf("pop"))
+	mdi.On("GetNonce", mock.Anything, mock.Anything).Return(nil, nil)
+	mdi.On("InsertNonce", mock.Anything, mock.Anything).Return(fmt.Errorf("pop"))
+	mockRunAsGroupPassthrough(mdi)
+
+	mdm := bp.data.(*datamocks.Manager)
+	mdm.On("UpdateMessageIfCached", mock.Anything, mock.Anything).Return()
 
 	gid := fftypes.NewRandB32()
-	_, err := bp.maskContexts(bp.ctx, &fftypes.Batch{
-		Group: gid,
-		Payload: fftypes.BatchPayload{
-			Messages: []*fftypes.Message{
-				{Header: fftypes.MessageHeader{
-					Group:  gid,
-					Topics: fftypes.FFNameArray{"topic1"},
-				}},
+	err := bp.sealBatch(&DispatchState{
+		Persisted: core.BatchPersisted{
+			BatchHeader: core.BatchHeader{
+				Group: gid,
 			},
 		},
+		Messages: []*core.Message{
+			{Header: core.MessageHeader{
+				ID:     fftypes.NewUUID(),
+				Group:  gid,
+				Topics: core.FFStringArray{"topic1"},
+			}},
+		},
 	})
-	assert.Regexp(t, "pop", err)
+	assert.Regexp(t, "FF00154", err)
+
+	<-bp.done
+
+	mdi.AssertExpectations(t)
+}
+
+func TestUpdateExistingNonceFail(t *testing.T) {
+	cancel, _, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
+		return nil
+	})
+	defer cancel()
+	bp.cancelCtx()
+	mdi := bp.database.(*databasemocks.Plugin)
+	mdi.On("GetNonce", mock.Anything, mock.Anything).Return(&core.Nonce{
+		Nonce: 12345,
+	}, nil)
+	mdi.On("UpdateNonce", mock.Anything, mock.MatchedBy(func(dbNonce *core.Nonce) bool {
+		return dbNonce.Nonce == 12346
+	})).Return(fmt.Errorf("pop"))
+	mockRunAsGroupPassthrough(mdi)
+
+	mdm := bp.data.(*datamocks.Manager)
+	mdm.On("UpdateMessageIfCached", mock.Anything, mock.Anything).Return()
+
+	gid := fftypes.NewRandB32()
+	err := bp.sealBatch(&DispatchState{
+		Persisted: core.BatchPersisted{
+			BatchHeader: core.BatchHeader{
+				Group: gid,
+			},
+		},
+		Messages: []*core.Message{
+			{Header: core.MessageHeader{
+				ID:     fftypes.NewUUID(),
+				Group:  gid,
+				Topics: core.FFStringArray{"topic1"},
+			}},
+		},
+	})
+	assert.Regexp(t, "FF00154", err)
+
+	<-bp.done
+
+	mdi.AssertExpectations(t)
+}
+
+func TestGetNonceFail(t *testing.T) {
+	cancel, _, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
+		return nil
+	})
+	defer cancel()
+	bp.cancelCtx()
+	mdi := bp.database.(*databasemocks.Plugin)
+	mdi.On("GetNonce", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("pop"))
+	mockRunAsGroupPassthrough(mdi)
+
+	mdm := bp.data.(*datamocks.Manager)
+	mdm.On("UpdateMessageIfCached", mock.Anything, mock.Anything).Return()
+
+	gid := fftypes.NewRandB32()
+	err := bp.sealBatch(&DispatchState{
+		Persisted: core.BatchPersisted{
+			BatchHeader: core.BatchHeader{
+				Group: gid,
+			},
+		},
+		Messages: []*core.Message{
+			{Header: core.MessageHeader{
+				ID:     fftypes.NewUUID(),
+				Group:  gid,
+				Topics: core.FFStringArray{"topic1"},
+			}},
+		},
+	})
+	assert.Regexp(t, "FF00154", err)
+
+	<-bp.done
+
+	mdi.AssertExpectations(t)
+}
+
+func TestGetNonceMigrationFail(t *testing.T) {
+	cancel, _, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
+		return nil
+	})
+	defer cancel()
+	bp.cancelCtx()
+	mdi := bp.database.(*databasemocks.Plugin)
+	mdi.On("GetNonce", mock.Anything, mock.Anything).Return(nil, nil).Once()
+	mdi.On("GetNonce", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("pop"))
+	mockRunAsGroupPassthrough(mdi)
+
+	mdm := bp.data.(*datamocks.Manager)
+	mdm.On("UpdateMessageIfCached", mock.Anything, mock.Anything).Return()
+
+	gid := fftypes.NewRandB32()
+	err := bp.sealBatch(&DispatchState{
+		Persisted: core.BatchPersisted{
+			BatchHeader: core.BatchHeader{
+				Group: gid,
+			},
+		},
+		Messages: []*core.Message{
+			{Header: core.MessageHeader{
+				ID:     fftypes.NewUUID(),
+				Group:  gid,
+				Topics: core.FFStringArray{"topic1"},
+			}},
+		},
+	})
+	assert.Regexp(t, "FF00154", err)
+
+	<-bp.done
+
+	mdi.AssertExpectations(t)
+}
+
+func TestAddWorkInSort(t *testing.T) {
+	cancel, _, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
+		return nil
+	})
+	defer cancel()
+	bp.assemblyQueue = []*batchWork{
+		{msg: &core.Message{Sequence: 200}},
+		{msg: &core.Message{Sequence: 201}},
+		{msg: &core.Message{Sequence: 202}},
+		{msg: &core.Message{Sequence: 204}},
+	}
+	_, _ = bp.addWork(&batchWork{
+		msg: &core.Message{Sequence: 203},
+	})
+	assert.Equal(t, []*batchWork{
+		{msg: &core.Message{Sequence: 200}},
+		{msg: &core.Message{Sequence: 201}},
+		{msg: &core.Message{Sequence: 202}},
+		{msg: &core.Message{Sequence: 203}},
+		{msg: &core.Message{Sequence: 204}},
+	}, bp.assemblyQueue)
+}
+
+func TestStartQuiesceNonBlocking(t *testing.T) {
+	cancel, _, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
+		return nil
+	})
+	defer cancel()
+	bp.startQuiesce()
+	bp.startQuiesce() // we're just checking this doesn't hang
+}
+
+func TestMarkMessageDispatchedUnpinnedOK(t *testing.T) {
+	log.SetLevel("debug")
+	coreconfig.Reset()
+
+	dispatched := make(chan *DispatchState)
+	cancel, mdi, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
+		dispatched <- state
+		return nil
+	})
+	defer cancel()
+	bp.conf.txType = core.TransactionTypeUnpinned
+
+	mockRunAsGroupPassthrough(mdi)
+	mdi.On("UpdateMessages", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	mdi.On("UpsertBatch", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	mdi.On("InsertEvent", mock.Anything, mock.Anything).Return(fmt.Errorf("pop")).Once()
+	mdi.On("InsertEvent", mock.Anything, mock.Anything).Return(nil)
+
+	mth := bp.txHelper.(*txcommonmocks.Helper)
+	mth.On("SubmitNewTransaction", mock.Anything, "ns1", core.TransactionTypeUnpinned).Return(fftypes.NewUUID(), nil)
+
+	mdm := bp.data.(*datamocks.Manager)
+	mdm.On("UpdateMessageIfCached", mock.Anything, mock.Anything).Return()
+
+	// Dispatch the work
+	go func() {
+		for i := 0; i < 5; i++ {
+			msgid := fftypes.NewUUID()
+			bp.newWork <- &batchWork{
+				msg: &core.Message{Header: core.MessageHeader{ID: msgid, Topics: core.FFStringArray{"topic1"}}, Sequence: int64(1000 + i)},
+			}
+		}
+	}()
+
+	// Wait for the confirmations, and the dispatch
+	batch := <-dispatched
+
+	// Check we got all the messages in a single batch
+	assert.Equal(t, 5, len(batch.Messages))
+
+	bp.cancelCtx()
+	<-bp.done
+
+	mdi.AssertExpectations(t)
+	mdm.AssertExpectations(t)
+	mth.AssertExpectations(t)
+}
+
+func TestMaskContextsRetryAfterPinsAssigned(t *testing.T) {
+	log.SetLevel("debug")
+	coreconfig.Reset()
+
+	dispatched := make(chan *DispatchState)
+	cancel, mdi, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
+		dispatched <- state
+		return nil
+	})
+	defer cancel()
+
+	mockRunAsGroupPassthrough(mdi)
+	mdi.On("GetNonce", mock.Anything, mock.Anything).Return(&core.Nonce{
+		Nonce: 12345,
+	}, nil).Once()
+	mdi.On("UpdateNonce", mock.Anything, mock.MatchedBy(func(dbNonce *core.Nonce) bool {
+		return dbNonce.Nonce == 12347 // twice incremented
+	})).Return(nil).Once()
+	mdi.On("UpdateMessage", mock.Anything, mock.Anything, mock.Anything).Return(nil).Twice()
+	mdi.On("UpsertBatch", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	mdm := bp.data.(*datamocks.Manager)
+	mdm.On("UpdateMessageIfCached", mock.Anything, mock.Anything).Return()
+
+	mth := bp.txHelper.(*txcommonmocks.Helper)
+	mth.On("SubmitNewTransaction", mock.Anything, "ns1", core.TransactionTypeBatchPin).Return(fftypes.NewUUID(), nil)
+
+	groupID := fftypes.NewRandB32()
+	msg1 := &core.Message{
+		Header: core.MessageHeader{
+			ID:     fftypes.NewUUID(),
+			Type:   core.MessageTypePrivate,
+			Group:  groupID,
+			Topics: core.FFStringArray{"topic1"},
+		},
+	}
+	msg2 := &core.Message{
+		Header: core.MessageHeader{
+			ID:     fftypes.NewUUID(),
+			Type:   core.MessageTypePrivate,
+			Group:  groupID,
+			Topics: core.FFStringArray{"topic1"},
+		},
+	}
+
+	state := bp.initFlushState(fftypes.NewUUID(), []*batchWork{{msg: msg1}, {msg: msg2}})
+	err := bp.sealBatch(state)
+	assert.NoError(t, err)
+
+	// Second time there should be no additional calls, because now the messages
+	// have pins in there that have been written to the database.
+	err = bp.sealBatch(state)
+	assert.NoError(t, err)
+
+	bp.cancelCtx()
+	<-bp.done
+
+	mdi.AssertExpectations(t)
+}
+
+func TestMaskContextsUpdateMessageFail(t *testing.T) {
+	log.SetLevel("debug")
+	coreconfig.Reset()
+
+	dispatched := make(chan *DispatchState)
+	cancel, mdi, bp := newTestBatchProcessor(t, func(c context.Context, state *DispatchState) error {
+		dispatched <- state
+		return nil
+	})
+	cancel()
+
+	mockRunAsGroupPassthrough(mdi)
+	mdi.On("GetNonce", mock.Anything, mock.Anything).Return(nil, nil)
+	mdi.On("InsertNonce", mock.Anything, mock.Anything).Return(nil)
+	mdi.On("UpdateMessage", mock.Anything, mock.Anything, mock.Anything).Return(fmt.Errorf("pop")).Once()
+
+	msg := &core.Message{
+		Header: core.MessageHeader{
+			ID:     fftypes.NewUUID(),
+			Type:   core.MessageTypePrivate,
+			Group:  fftypes.NewRandB32(),
+			Topics: core.FFStringArray{"topic1"},
+		},
+	}
+
+	state := bp.initFlushState(fftypes.NewUUID(), []*batchWork{{msg: msg}})
+	err := bp.sealBatch(state)
+	assert.Regexp(t, "FF00154", err)
+
+	bp.cancelCtx()
+	<-bp.done
+
+	mdi.AssertExpectations(t)
+}
+
+func TestBigBatchEstimate(t *testing.T) {
+	log.SetLevel("debug")
+	coreconfig.Reset()
+
+	bd := []byte(`{
+		"id": "37ba893b-fcfa-4cf9-8ce8-34cd8bc9bc72",
+		"type": "broadcast",
+		"namespace": "default",
+		"node": "248ba775-f595-40a6-a989-c2f2faae2dea",
+		"author": "did:firefly:org/org_0",
+		"key": "0x7e3bb2198959d3a1c3ede9db1587560320ce8998",
+		"Group": null,
+		"created": "2022-03-18T14:57:33.228374398Z",
+		"hash": "7c620c12207ec153afea75d958de3edf601beced2570c798ebc246c2c44a5f66",
+		"payload": {
+		  "tx": {
+			"type": "batch_pin",
+			"id": "8d3f06b8-adb5-4745-a536-a9e262fd2e9f"
+		  },
+		  "messages": [
+			{
+			  "header": {
+				"id": "2b393190-28e7-4b86-8af6-00906e94989b",
+				"type": "broadcast",
+				"txtype": "batch_pin",
+				"author": "did:firefly:org/org_0",
+				"key": "0x7e3bb2198959d3a1c3ede9db1587560320ce8998",
+				"created": "2022-03-18T14:57:32.209734225Z",
+				"namespace": "default",
+				"topics": [
+				  "default"
+				],
+				"tag": "perf_02e01e12-b918-4982-8407-2f9a08d673f3_740",
+				"datahash": "b5b0c398450707b885f5973248ffa9a542f4c2f54860eba6c2d7aee48d0f9109"
+			  },
+			  "hash": "5fc430f1c8134c6c32c4e34ef65984843bb77bb19e73c862d464669537d96dbd",
+			  "data": [
+				{
+				  "id": "147743b4-bd23-4da1-bd21-90c4ad9f1650",
+				  "hash": "8ed265110f60711f79de1bc87b476e00bd8f8be436cdda3cf27fbf886d5e6ce6"
+				}
+			  ]
+			}
+		  ],
+		  "data": [
+			{
+			  "id": "147743b4-bd23-4da1-bd21-90c4ad9f1650",
+			  "validator": "json",
+			  "namespace": "default",
+			  "hash": "8ed265110f60711f79de1bc87b476e00bd8f8be436cdda3cf27fbf886d5e6ce6",
+			  "created": "2022-03-18T14:57:32.209705277Z",
+			  "value": {
+				"broadcastID": "740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740740"
+			  }
+			}
+		  ]
+		}
+	  }`)
+	var batch core.Batch
+	err := json.Unmarshal(bd, &batch)
+	assert.NoError(t, err)
+
+	sizeEstimate := batchSizeEstimateBase
+	for i, m := range batch.Payload.Messages {
+		dataJSONSize := 0
+		bw := &batchWork{
+			msg: m,
+		}
+		for _, dr := range m.Data {
+			for _, d := range batch.Payload.Data {
+				if d.ID.Equals(dr.ID) {
+					bw.data = append(bw.data, d)
+					break
+				}
+			}
+			bd, err := json.Marshal(&bw.data)
+			assert.NoError(t, err)
+			dataJSONSize += len(bd)
+		}
+		md, err := json.Marshal(&bw.msg)
+		assert.NoError(t, err)
+		msgJSONSize := len(md)
+		t.Logf("Msg=%.3d/%s Estimate=%d JSON - Msg=%d Data=%d Total=%d", i, m.Header.ID, bw.estimateSize(), msgJSONSize, dataJSONSize, msgJSONSize+dataJSONSize)
+		sizeEstimate += bw.estimateSize()
+	}
+
+	assert.Greater(t, sizeEstimate, int64(len(bd)))
 }

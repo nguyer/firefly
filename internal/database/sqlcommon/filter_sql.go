@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -22,18 +22,26 @@ import (
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/pkg/database"
 )
 
-func (s *SQLCommon) filterSelect(ctx context.Context, tableName string, sel sq.SelectBuilder, filter database.Filter, typeMap map[string]string, defaultSort []string, preconditions ...sq.Sqlizer) (sq.SelectBuilder, sq.Sqlizer, *database.FilterInfo, error) {
+func (s *SQLCommon) filterSelect(ctx context.Context, tableName string, sel sq.SelectBuilder, filter database.Filter, typeMap map[string]string, defaultSort []interface{}, preconditions ...sq.Sqlizer) (sq.SelectBuilder, sq.Sqlizer, *database.FilterInfo, error) {
 	fi, err := filter.Finalize()
 	if err != nil {
 		return sel, nil, nil, err
 	}
 	if len(fi.Sort) == 0 {
 		for _, s := range defaultSort {
-			fi.Sort = append(fi.Sort, &database.SortField{Field: s, Descending: true})
+			switch v := s.(type) {
+			case string:
+				fi.Sort = append(fi.Sort, &database.SortField{Field: v, Descending: true})
+			case *database.SortField:
+				fi.Sort = append(fi.Sort, v)
+			default:
+				panic(fmt.Sprintf("unknown sort type: %v", v))
+			}
 		}
 	}
 	fop, err := s.filterSelectFinalized(ctx, tableName, fi, typeMap, preconditions...)
@@ -45,7 +53,13 @@ func (s *SQLCommon) filterSelect(ctx context.Context, tableName string, sel sq.S
 		if sf.Descending {
 			direction = " DESC"
 		}
-		sort[i] = fmt.Sprintf("%s%s", s.mapField(tableName, sf.Field, typeMap), direction)
+		nulls := ""
+		if sf.Nulls == database.NullsFirst {
+			nulls = " NULLS FIRST"
+		} else if sf.Nulls == database.NullsLast {
+			nulls = " NULLS LAST"
+		}
+		sort[i] = fmt.Sprintf("%s%s%s", s.mapField(tableName, sf.Field, typeMap), direction, nulls)
 	}
 	sortString = strings.Join(sort, ", ")
 	sel = sel.OrderBy(sortString)
@@ -67,9 +81,7 @@ func (s *SQLCommon) filterSelectFinalized(ctx context.Context, tableName string,
 	}
 	if len(preconditions) > 0 {
 		and := make(sq.And, len(preconditions)+1)
-		for i, p := range preconditions {
-			and[i] = p
-		}
+		copy(and, preconditions)
 		and[len(preconditions)] = fop
 		fop = and
 	}
@@ -88,11 +100,11 @@ func (s *SQLCommon) buildUpdate(sel sq.UpdateBuilder, update database.Update, ty
 	return sel, nil
 }
 
-func (s *SQLCommon) filterUpdate(ctx context.Context, tableName string, update sq.UpdateBuilder, filter database.Filter, typeMap map[string]string) (sq.UpdateBuilder, error) {
+func (s *SQLCommon) filterUpdate(ctx context.Context, update sq.UpdateBuilder, filter database.Filter, typeMap map[string]string) (sq.UpdateBuilder, error) {
 	fi, err := filter.Finalize()
 	var fop sq.Sqlizer
 	if err == nil {
-		fop, err = s.filterOp(ctx, tableName, fi, typeMap)
+		fop, err = s.filterOp(ctx, "", fi, typeMap)
 	}
 	if err != nil {
 		return update, err
@@ -128,6 +140,22 @@ func (s *SQLCommon) mapField(tableName, fieldName string, tm map[string]string) 
 	return field
 }
 
+// newILike uses ILIKE if supported by DB, otherwise the "lower" approach
+func (s *SQLCommon) newILike(field, value string) sq.Sqlizer {
+	if s.features.UseILIKE {
+		return sq.ILike{field: value}
+	}
+	return sq.Like{fmt.Sprintf("lower(%s)", field): strings.ToLower(value)}
+}
+
+// newNotILike uses ILIKE if supported by DB, otherwise the "lower" approach
+func (s *SQLCommon) newNotILike(field, value string) sq.Sqlizer {
+	if s.features.UseILIKE {
+		return sq.NotILike{field: value}
+	}
+	return sq.NotLike{fmt.Sprintf("lower(%s)", field): strings.ToLower(value)}
+}
+
 func (s *SQLCommon) filterOp(ctx context.Context, tableName string, op *database.FilterInfo, tm map[string]string) (sq.Sqlizer, error) {
 	switch op.Op {
 	case database.FilterOpOr:
@@ -136,10 +164,14 @@ func (s *SQLCommon) filterOp(ctx context.Context, tableName string, op *database
 		return s.filterAnd(ctx, tableName, op, tm)
 	case database.FilterOpEq:
 		return sq.Eq{s.mapField(tableName, op.Field, tm): op.Value}, nil
+	case database.FilterOpIEq:
+		return s.newILike(s.mapField(tableName, op.Field, tm), s.escapeLike(op.Value)), nil
 	case database.FilterOpIn:
 		return sq.Eq{s.mapField(tableName, op.Field, tm): op.Values}, nil
-	case database.FilterOpNe:
+	case database.FilterOpNeq:
 		return sq.NotEq{s.mapField(tableName, op.Field, tm): op.Value}, nil
+	case database.FilterOpNIeq:
+		return s.newNotILike(s.mapField(tableName, op.Field, tm), s.escapeLike(op.Value)), nil
 	case database.FilterOpNotIn:
 		return sq.NotEq{s.mapField(tableName, op.Field, tm): op.Values}, nil
 	case database.FilterOpCont:
@@ -147,9 +179,25 @@ func (s *SQLCommon) filterOp(ctx context.Context, tableName string, op *database
 	case database.FilterOpNotCont:
 		return sq.NotLike{s.mapField(tableName, op.Field, tm): fmt.Sprintf("%%%s%%", s.escapeLike(op.Value))}, nil
 	case database.FilterOpICont:
-		return sq.ILike{s.mapField(tableName, op.Field, tm): fmt.Sprintf("%%%s%%", s.escapeLike(op.Value))}, nil
+		return s.newILike(s.mapField(tableName, op.Field, tm), fmt.Sprintf("%%%s%%", s.escapeLike(op.Value))), nil
 	case database.FilterOpNotICont:
-		return sq.NotILike{s.mapField(tableName, op.Field, tm): fmt.Sprintf("%%%s%%", s.escapeLike(op.Value))}, nil
+		return s.newNotILike(s.mapField(tableName, op.Field, tm), fmt.Sprintf("%s%%", s.escapeLike(op.Value))), nil
+	case database.FilterOpStartsWith:
+		return sq.Like{s.mapField(tableName, op.Field, tm): fmt.Sprintf("%s%%", s.escapeLike(op.Value))}, nil
+	case database.FilterOpNotStartsWith:
+		return sq.NotLike{s.mapField(tableName, op.Field, tm): fmt.Sprintf("%s%%", s.escapeLike(op.Value))}, nil
+	case database.FilterOpIStartsWith:
+		return s.newILike(s.mapField(tableName, op.Field, tm), fmt.Sprintf("%s%%", s.escapeLike(op.Value))), nil
+	case database.FilterOpNotIStartsWith:
+		return s.newNotILike(s.mapField(tableName, op.Field, tm), fmt.Sprintf("%s%%", s.escapeLike(op.Value))), nil
+	case database.FilterOpEndsWith:
+		return sq.Like{s.mapField(tableName, op.Field, tm): fmt.Sprintf("%%%s", s.escapeLike(op.Value))}, nil
+	case database.FilterOpNotEndsWith:
+		return sq.NotLike{s.mapField(tableName, op.Field, tm): fmt.Sprintf("%%%s", s.escapeLike(op.Value))}, nil
+	case database.FilterOpIEndsWith:
+		return s.newILike(s.mapField(tableName, op.Field, tm), fmt.Sprintf("%%%s", s.escapeLike(op.Value))), nil
+	case database.FilterOpNotIEndsWith:
+		return s.newNotILike(s.mapField(tableName, op.Field, tm), fmt.Sprintf("%%%s", s.escapeLike(op.Value))), nil
 	case database.FilterOpGt:
 		return sq.Gt{s.mapField(tableName, op.Field, tm): op.Value}, nil
 	case database.FilterOpGte:
@@ -159,7 +207,7 @@ func (s *SQLCommon) filterOp(ctx context.Context, tableName string, op *database
 	case database.FilterOpLte:
 		return sq.LtOrEq{s.mapField(tableName, op.Field, tm): op.Value}, nil
 	default:
-		return nil, i18n.NewError(ctx, i18n.MsgUnsupportedSQLOpInFilter, op.Op)
+		return nil, i18n.NewError(ctx, coremsgs.MsgUnsupportedSQLOpInFilter, op.Op)
 	}
 }
 

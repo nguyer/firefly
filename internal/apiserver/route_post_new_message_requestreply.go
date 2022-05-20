@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -17,31 +17,26 @@
 package apiserver
 
 import (
-	"context"
 	"net/http"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 )
 
 var postNewMessageRequestReply = &oapispec.Route{
-	Name:   "postNewMessageRequestReply",
-	Path:   "namespaces/{ns}/messages/requestreply",
-	Method: http.MethodPost,
-	PathParams: []*oapispec.PathParam{
-		{Name: "ns", ExampleFromConf: config.NamespacesDefault, Description: i18n.MsgTBD},
-	},
+	Name:            "postNewMessageRequestReply",
+	Path:            "messages/requestreply",
+	Method:          http.MethodPost,
+	PathParams:      nil,
 	QueryParams:     nil,
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
-	JSONInputValue:  func() interface{} { return &fftypes.MessageInOut{} },
-	JSONInputSchema: func(ctx context.Context) string { return privateSendSchema },
-	JSONOutputValue: func() interface{} { return &fftypes.MessageInOut{} },
+	Description:     coremsgs.APIEndpointsPostNewMessageRequestReply,
+	JSONInputValue:  func() interface{} { return &core.MessageInOut{} },
+	JSONOutputValue: func() interface{} { return &core.MessageInOut{} },
 	JSONOutputCodes: []int{http.StatusOK}, // Sync operation
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
-		output, err = r.Or.RequestReply(r.Ctx, r.PP["ns"], r.Input.(*fftypes.MessageInOut))
+		output, err = getOr(r.Ctx).RequestReply(r.Ctx, extractNamespace(r.PP), r.Input.(*core.MessageInOut))
 		return output, err
 	},
 }

@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -17,13 +17,12 @@
 package apiserver
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 )
 
 var postNodesSelf = &oapispec.Route{
@@ -32,19 +31,17 @@ var postNodesSelf = &oapispec.Route{
 	Method:     http.MethodPost,
 	PathParams: nil,
 	QueryParams: []*oapispec.QueryParam{
-		{Name: "confirm", Description: i18n.MsgConfirmQueryParam, IsBool: true, Example: "true"},
+		{Name: "confirm", Description: coremsgs.APIConfirmQueryParam, IsBool: true, Example: "true"},
 	},
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
-	JSONInputValue:  func() interface{} { return &fftypes.EmptyInput{} },
-	JSONInputMask:   nil,
-	JSONInputSchema: func(ctx context.Context) string { return emptyObjectSchema },
-	JSONOutputValue: func() interface{} { return &fftypes.Node{} },
+	Description:     coremsgs.APIEndpointsPostNodesSelf,
+	JSONInputValue:  func() interface{} { return &core.EmptyInput{} },
+	JSONOutputValue: func() interface{} { return &core.Identity{} },
 	JSONOutputCodes: []int{http.StatusAccepted, http.StatusOK},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
 		waitConfirm := strings.EqualFold(r.QP["confirm"], "true")
 		r.SuccessStatus = syncRetcode(waitConfirm)
-		node, _, err := r.Or.NetworkMap().RegisterNode(r.Ctx, waitConfirm)
+		node, err := getOr(r.Ctx).NetworkMap().RegisterNode(r.Ctx, waitConfirm)
 		return node, err
 	},
 }

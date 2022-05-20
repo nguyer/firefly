@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -21,10 +21,12 @@ import (
 	"database/sql"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 var (
@@ -33,59 +35,105 @@ var (
 		"payload_ref",
 		"peer",
 		"created",
+		"size",
 	}
 	blobFilterFieldMap = map[string]string{
 		"payloadref": "payload_ref",
 	}
 )
 
-func (s *SQLCommon) InsertBlob(ctx context.Context, blob *fftypes.Blob) (err error) {
+const blobsTable = "blobs"
+
+func (s *SQLCommon) InsertBlob(ctx context.Context, blob *core.Blob) (err error) {
 	ctx, tx, autoCommit, err := s.beginOrUseTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	sequence, err := s.insertTx(ctx, tx,
-		sq.Insert("blobs").
-			Columns(blobColumns...).
-			Values(
-				blob.Hash,
-				blob.PayloadRef,
-				blob.Peer,
-				blob.Created,
-			),
-		nil, // no change events for blobs
-	)
+	err = s.attemptBlobInsert(ctx, tx, blob)
 	if err != nil {
 		return err
 	}
-	blob.Sequence = sequence
 
 	return s.commitTx(ctx, tx, autoCommit)
 }
 
-func (s *SQLCommon) blobResult(ctx context.Context, row *sql.Rows) (*fftypes.Blob, error) {
-	blob := fftypes.Blob{}
+func (s *SQLCommon) setBlobInsertValues(query sq.InsertBuilder, blob *core.Blob) sq.InsertBuilder {
+	return query.Values(
+		blob.Hash,
+		blob.PayloadRef,
+		blob.Peer,
+		blob.Created,
+		blob.Size,
+	)
+}
+
+func (s *SQLCommon) attemptBlobInsert(ctx context.Context, tx *txWrapper, blob *core.Blob) (err error) {
+	blob.Sequence, err = s.insertTx(ctx, blobsTable, tx,
+		s.setBlobInsertValues(sq.Insert(blobsTable).Columns(blobColumns...), blob),
+		nil, // no change events for blobs
+	)
+	return err
+}
+
+func (s *SQLCommon) InsertBlobs(ctx context.Context, blobs []*core.Blob) (err error) {
+
+	ctx, tx, autoCommit, err := s.beginOrUseTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer s.rollbackTx(ctx, tx, autoCommit)
+
+	if s.features.MultiRowInsert {
+		query := sq.Insert(blobsTable).Columns(blobColumns...)
+		for _, blob := range blobs {
+			query = s.setBlobInsertValues(query, blob)
+		}
+		sequences := make([]int64, len(blobs))
+		err := s.insertTxRows(ctx, blobsTable, tx, query,
+			nil, /* no change events for blobs */
+			sequences,
+			true /* we want the caller to be able to retry with individual upserts */)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Fall back to individual inserts grouped in a TX
+		for _, blob := range blobs {
+			err := s.attemptBlobInsert(ctx, tx, blob)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return s.commitTx(ctx, tx, autoCommit)
+
+}
+
+func (s *SQLCommon) blobResult(ctx context.Context, row *sql.Rows) (*core.Blob, error) {
+	blob := core.Blob{}
 	err := row.Scan(
 		&blob.Hash,
 		&blob.PayloadRef,
 		&blob.Peer,
 		&blob.Created,
+		&blob.Size,
 		&blob.Sequence,
 	)
 	if err != nil {
-		return nil, i18n.WrapError(ctx, err, i18n.MsgDBReadErr, "blobs")
+		return nil, i18n.WrapError(ctx, err, coremsgs.MsgDBReadErr, blobsTable)
 	}
 	return &blob, nil
 }
 
-func (s *SQLCommon) getBlobPred(ctx context.Context, desc string, pred interface{}) (message *fftypes.Blob, err error) {
+func (s *SQLCommon) getBlobPred(ctx context.Context, desc string, pred interface{}) (message *core.Blob, err error) {
 	cols := append([]string{}, blobColumns...)
 	cols = append(cols, sequenceColumn)
-	rows, _, err := s.query(ctx,
+	rows, _, err := s.query(ctx, blobsTable,
 		sq.Select(cols...).
-			From("blobs").
+			From(blobsTable).
 			Where(pred).
 			Limit(1),
 	)
@@ -107,28 +155,28 @@ func (s *SQLCommon) getBlobPred(ctx context.Context, desc string, pred interface
 	return blob, nil
 }
 
-func (s *SQLCommon) GetBlobMatchingHash(ctx context.Context, hash *fftypes.Bytes32) (message *fftypes.Blob, err error) {
+func (s *SQLCommon) GetBlobMatchingHash(ctx context.Context, hash *fftypes.Bytes32) (message *core.Blob, err error) {
 	return s.getBlobPred(ctx, hash.String(), sq.Eq{
 		"hash": hash,
 	})
 }
 
-func (s *SQLCommon) GetBlobs(ctx context.Context, filter database.Filter) (message []*fftypes.Blob, res *database.FilterResult, err error) {
+func (s *SQLCommon) GetBlobs(ctx context.Context, filter database.Filter) (message []*core.Blob, res *database.FilterResult, err error) {
 
 	cols := append([]string{}, blobColumns...)
 	cols = append(cols, sequenceColumn)
-	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(cols...).From("blobs"), filter, blobFilterFieldMap, []string{"sequence"})
+	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(cols...).From(blobsTable), filter, blobFilterFieldMap, []interface{}{"sequence"})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, tx, err := s.query(ctx, query)
+	rows, tx, err := s.query(ctx, blobsTable, query)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 
-	blob := []*fftypes.Blob{}
+	blob := []*core.Blob{}
 	for rows.Next() {
 		d, err := s.blobResult(ctx, rows)
 		if err != nil {
@@ -137,7 +185,7 @@ func (s *SQLCommon) GetBlobs(ctx context.Context, filter database.Filter) (messa
 		blob = append(blob, d)
 	}
 
-	return blob, s.queryRes(ctx, tx, "blobs", fop, fi), err
+	return blob, s.queryRes(ctx, blobsTable, tx, fop, fi), err
 
 }
 
@@ -149,7 +197,7 @@ func (s *SQLCommon) DeleteBlob(ctx context.Context, sequence int64) (err error) 
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	err = s.deleteTx(ctx, tx, sq.Delete("blobs").Where(sq.Eq{
+	err = s.deleteTx(ctx, blobsTable, tx, sq.Delete(blobsTable).Where(sq.Eq{
 		sequenceColumn: sequence,
 	}), nil /* no change events for blobs */)
 	if err != nil {

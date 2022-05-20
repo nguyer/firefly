@@ -2,10 +2,30 @@
 
 set -o pipefail
 
+ if [[ ! -x `which jq` ]]; then echo "Please install \"jq\" to continue"; exit 1; fi
+
 CWD=$(dirname "$0")
 CLI="ff -v --ansi never"
-STACK_DIR=~/.firefly/stacks
-STACK_NAME=firefly_e2e
+CLI_VERSION=$(cat $CWD/../../manifest.json | jq -r .cli.tag)
+STACKS_DIR=~/.firefly/stacks
+
+create_accounts() {
+  if [ "$TEST_SUITE" == "TestEthereumE2ESuite" ]; then
+      # Create 4 new accounts for use in testing
+      for i in {1..4}
+      do
+          $CLI accounts create $STACK_NAME
+      done
+  elif [ "$TEST_SUITE" == "TestFabricE2ESuite" ]; then
+      # Create 4 new accounts for the first org for use in testing
+      for i in {1..3}
+      do
+          $CLI accounts create $STACK_NAME org_0 user_$(openssl rand -hex 10)
+      done
+      # Create one account for the second org
+      $CLI accounts create $STACK_NAME org_1 user_$(openssl rand -hex 10)
+  fi
+}
 
 checkOk() {
   local rc=$1
@@ -19,6 +39,10 @@ checkOk() {
 
   if [ $rc -ne 0 ]; then exit $rc; fi
 }
+
+if [ -z "${STACK_NAME}" ]; then
+  STACK_NAME=firefly_e2e
+fi
 
 if [ -z "${DOWNLOAD_CLI}" ]; then
   DOWNLOAD_CLI=true
@@ -38,28 +62,43 @@ if [ -z "${DATABASE_TYPE}" ]; then
 fi
 
 if [ -z "${STACK_FILE}" ]; then
-  STACK_FILE=$STACK_DIR/$STACK_NAME/stack.json
+  STACK_FILE=$STACKS_DIR/$STACK_NAME/stack.json
+fi
+
+if [ -z "${STACK_STATE}" ]; then
+  STACK_STATE=$STACKS_DIR/$STACK_NAME/runtime/stackState.json
+fi
+
+if [ -z "${BLOCKCHAIN_PROVIDER}" ]; then
+  BLOCKCHAIN_PROVIDER=geth
+fi
+
+if [ -z "${TOKENS_PROVIDER}" ]; then
+  TOKENS_PROVIDER=erc20_erc721
+fi
+
+if [ -z "${TEST_SUITE}" ]; then
+  TEST_SUITE=TestEthereumE2ESuite
 fi
 
 cd $CWD
 
 if [ "$CREATE_STACK" == "true" ]; then
-  $CLI remove -f firefly-e2e  # TODO: remove
   $CLI remove -f $STACK_NAME
 fi
 
 if [ "$BUILD_FIREFLY" == "true" ]; then
-  docker build -t hyperledger/firefly ../..
+  make -C ../.. docker
   checkOk $?
 fi
 
 if [ "$DOWNLOAD_CLI" == "true" ]; then
-  go install github.com/hyperledger/firefly-cli/ff@v0.0.35
+  go install github.com/hyperledger/firefly-cli/ff@$CLI_VERSION
   checkOk $?
 fi
 
 if [ "$CREATE_STACK" == "true" ]; then
-  $CLI init --database $DATABASE_TYPE $STACK_NAME 2 --manifest ../../manifest.json
+  $CLI init --prometheus-enabled --database $DATABASE_TYPE $STACK_NAME 2 --blockchain-provider $BLOCKCHAIN_PROVIDER --token-providers $TOKENS_PROVIDER --manifest ../../manifest.json $EXTRA_INIT_ARGS --sandbox-enabled=false
   checkOk $?
 
   $CLI pull $STACK_NAME -r 3
@@ -69,10 +108,30 @@ if [ "$CREATE_STACK" == "true" ]; then
   checkOk $?
 fi
 
+if [ "$TEST_SUITE" == "TestEthereumE2ESuite" ]; then
+    export CONTRACT_ADDRESS=$($CLI deploy ethereum $STACK_NAME ../data/simplestorage/simple_storage.json | jq -r '.address')
+fi
+
+create_accounts
+
 $CLI info $STACK_NAME
 checkOk $?
 
 export STACK_FILE
+export STACK_STATE
 
-go clean -testcache && go test -v .
+go clean -testcache && go test -v . -run $TEST_SUITE
 checkOk $?
+
+if [ "$RESTART" == "true" ]; then
+  $CLI stop $STACK_NAME
+  checkOk $?
+
+  $CLI start $STACK_NAME
+  checkOk $?
+
+  create_accounts
+
+  go clean -testcache && go test -v . -run $TEST_SUITE
+  checkOk $?
+fi

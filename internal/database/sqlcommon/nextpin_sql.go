@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -22,10 +22,12 @@ import (
 	"fmt"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 var (
@@ -38,15 +40,17 @@ var (
 	nextpinFilterFieldMap = map[string]string{}
 )
 
-func (s *SQLCommon) InsertNextPin(ctx context.Context, nextpin *fftypes.NextPin) (err error) {
+const nextpinsTable = "nextpins"
+
+func (s *SQLCommon) InsertNextPin(ctx context.Context, nextpin *core.NextPin) (err error) {
 	ctx, tx, autoCommit, err := s.beginOrUseTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	sequence, err := s.insertTx(ctx, tx,
-		sq.Insert("nextpins").
+	sequence, err := s.insertTx(ctx, nextpinsTable, tx,
+		sq.Insert(nextpinsTable).
 			Columns(nextpinColumns...).
 			Values(
 				nextpin.Context,
@@ -64,8 +68,8 @@ func (s *SQLCommon) InsertNextPin(ctx context.Context, nextpin *fftypes.NextPin)
 	return s.commitTx(ctx, tx, autoCommit)
 }
 
-func (s *SQLCommon) nextpinResult(ctx context.Context, row *sql.Rows) (*fftypes.NextPin, error) {
-	nextpin := fftypes.NextPin{}
+func (s *SQLCommon) nextpinResult(ctx context.Context, row *sql.Rows) (*core.NextPin, error) {
+	nextpin := core.NextPin{}
 	err := row.Scan(
 		&nextpin.Context,
 		&nextpin.Identity,
@@ -74,17 +78,17 @@ func (s *SQLCommon) nextpinResult(ctx context.Context, row *sql.Rows) (*fftypes.
 		&nextpin.Sequence,
 	)
 	if err != nil {
-		return nil, i18n.WrapError(ctx, err, i18n.MsgDBReadErr, "nextpins")
+		return nil, i18n.WrapError(ctx, err, coremsgs.MsgDBReadErr, nextpinsTable)
 	}
 	return &nextpin, nil
 }
 
-func (s *SQLCommon) getNextPinPred(ctx context.Context, desc string, pred interface{}) (message *fftypes.NextPin, err error) {
+func (s *SQLCommon) getNextPinPred(ctx context.Context, desc string, pred interface{}) (message *core.NextPin, err error) {
 	cols := append([]string{}, nextpinColumns...)
 	cols = append(cols, sequenceColumn)
-	rows, _, err := s.query(ctx,
+	rows, _, err := s.query(ctx, nextpinsTable,
 		sq.Select(cols...).
-			From("nextpins").
+			From(nextpinsTable).
 			Where(pred).
 			Limit(1),
 	)
@@ -106,35 +110,35 @@ func (s *SQLCommon) getNextPinPred(ctx context.Context, desc string, pred interf
 	return nextpin, nil
 }
 
-func (s *SQLCommon) GetNextPinByContextAndIdentity(ctx context.Context, context *fftypes.Bytes32, identity string) (message *fftypes.NextPin, err error) {
+func (s *SQLCommon) GetNextPinByContextAndIdentity(ctx context.Context, context *fftypes.Bytes32, identity string) (message *core.NextPin, err error) {
 	return s.getNextPinPred(ctx, fmt.Sprintf("%s:%s", context, identity), sq.Eq{
 		"context":  context,
 		"identity": identity,
 	})
 }
 
-func (s *SQLCommon) GetNextPinByHash(ctx context.Context, hash *fftypes.Bytes32) (message *fftypes.NextPin, err error) {
+func (s *SQLCommon) GetNextPinByHash(ctx context.Context, hash *fftypes.Bytes32) (message *core.NextPin, err error) {
 	return s.getNextPinPred(ctx, hash.String(), sq.Eq{
 		"hash": hash,
 	})
 }
 
-func (s *SQLCommon) GetNextPins(ctx context.Context, filter database.Filter) (message []*fftypes.NextPin, fr *database.FilterResult, err error) {
+func (s *SQLCommon) GetNextPins(ctx context.Context, filter database.Filter) (message []*core.NextPin, fr *database.FilterResult, err error) {
 
 	cols := append([]string{}, nextpinColumns...)
 	cols = append(cols, sequenceColumn)
-	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(cols...).From("nextpins"), filter, nextpinFilterFieldMap, []string{"sequence"})
+	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(cols...).From(nextpinsTable), filter, nextpinFilterFieldMap, []interface{}{"sequence"})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, tx, err := s.query(ctx, query)
+	rows, tx, err := s.query(ctx, nextpinsTable, query)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 
-	nextpin := []*fftypes.NextPin{}
+	nextpin := []*core.NextPin{}
 	for rows.Next() {
 		d, err := s.nextpinResult(ctx, rows)
 		if err != nil {
@@ -143,7 +147,7 @@ func (s *SQLCommon) GetNextPins(ctx context.Context, filter database.Filter) (me
 		nextpin = append(nextpin, d)
 	}
 
-	return nextpin, s.queryRes(ctx, tx, "nextpins", fop, fi), err
+	return nextpin, s.queryRes(ctx, nextpinsTable, tx, fop, fi), err
 
 }
 
@@ -155,13 +159,13 @@ func (s *SQLCommon) UpdateNextPin(ctx context.Context, sequence int64, update da
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	query, err := s.buildUpdate(sq.Update("nextpins"), update, nodeFilterFieldMap)
+	query, err := s.buildUpdate(sq.Update(nextpinsTable), update, pinFilterFieldMap)
 	if err != nil {
 		return err
 	}
 	query = query.Where(sq.Eq{sequenceColumn: sequence})
 
-	err = s.updateTx(ctx, tx, query, nil /* no change events for next pins */)
+	_, err = s.updateTx(ctx, nextpinsTable, tx, query, nil /* no change events for next pins */)
 	if err != nil {
 		return err
 	}
@@ -177,7 +181,7 @@ func (s *SQLCommon) DeleteNextPin(ctx context.Context, sequence int64) (err erro
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	err = s.deleteTx(ctx, tx, sq.Delete("nextpins").Where(sq.Eq{
+	err = s.deleteTx(ctx, nextpinsTable, tx, sq.Delete(nextpinsTable).Where(sq.Eq{
 		sequenceColumn: sequence,
 	}), nil /* no change events for next pins */)
 	if err != nil {

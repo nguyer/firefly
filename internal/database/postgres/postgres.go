@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -18,13 +18,14 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 
 	"database/sql"
 
 	sq "github.com/Masterminds/squirrel"
 	migratedb "github.com/golang-migrate/migrate/v4/database"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
-	"github.com/hyperledger/firefly/internal/config"
+	"github.com/hyperledger/firefly-common/pkg/config"
 	"github.com/hyperledger/firefly/internal/database/sqlcommon"
 	"github.com/hyperledger/firefly/pkg/database"
 
@@ -36,9 +37,9 @@ type Postgres struct {
 	sqlcommon.SQLCommon
 }
 
-func (psql *Postgres) Init(ctx context.Context, prefix config.Prefix, callbacks database.Callbacks) error {
+func (psql *Postgres) Init(ctx context.Context, config config.Section, callbacks database.Callbacks) error {
 	capabilities := &database.Capabilities{}
-	return psql.SQLCommon.Init(ctx, psql, prefix, callbacks, capabilities)
+	return psql.SQLCommon.Init(ctx, psql, config, callbacks, capabilities)
 }
 
 func (psql *Postgres) Name() string {
@@ -49,12 +50,24 @@ func (psql *Postgres) MigrationsDir() string {
 	return psql.Name()
 }
 
-func (psql *Postgres) PlaceholderFormat() sq.PlaceholderFormat {
-	return sq.Dollar
+func (psql *Postgres) Features() sqlcommon.SQLFeatures {
+	features := sqlcommon.DefaultSQLProviderFeatures()
+	features.PlaceholderFormat = sq.Dollar
+	features.UseILIKE = false // slower than lower()
+	features.ExclusiveTableLockSQL = func(table string) string {
+		return fmt.Sprintf(`LOCK TABLE "%s" IN EXCLUSIVE MODE;`, table)
+	}
+	features.MultiRowInsert = true
+	return features
 }
 
-func (psql *Postgres) UpdateInsertForSequenceReturn(insert sq.InsertBuilder) (sq.InsertBuilder, bool) {
-	return insert.Suffix(" RETURNING seq"), true
+func (psql *Postgres) ApplyInsertQueryCustomizations(insert sq.InsertBuilder, requestConflictEmptyResult bool) (sq.InsertBuilder, bool) {
+	suffix := " RETURNING seq"
+	if requestConflictEmptyResult {
+		// Caller wants us to return an empty result set on insert conflict, rather than an error
+		suffix = fmt.Sprintf(" ON CONFLICT DO NOTHING%s", suffix)
+	}
+	return insert.Suffix(suffix), true
 }
 
 func (psql *Postgres) Open(url string) (*sql.DB, error) {

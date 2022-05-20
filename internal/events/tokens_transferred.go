@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,148 +19,151 @@ package events
 import (
 	"context"
 
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/txcommon"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 	"github.com/hyperledger/firefly/pkg/tokens"
 )
 
-func retrieveTokenTransferInputs(ctx context.Context, op *fftypes.Operation, transfer *fftypes.TokenTransfer) (err error) {
-	input := &op.Input
-	transfer.LocalID, err = fftypes.ParseUUID(ctx, input.GetString("id"))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (em *eventManager) persistTokenTransaction(ctx context.Context, ns string, transfer *fftypes.TokenTransfer, protocolTxID string, additionalInfo fftypes.JSONObject) (valid bool, err error) {
-	transfer.LocalID = nil
-
-	// Find a matching operation within this transaction
+// Determine if this transfer event should use a LocalID that was pre-assigned to an operation submitted by this node.
+// This will ensure that the original LocalID provided to the user can later be used in a lookup, and also causes requests that
+// use "confirm=true" to resolve as expected.
+// Must follow these rules to reuse the LocalID:
+// - The transaction ID on the transfer must match a transaction+operation initiated by this node.
+// - The connector and pool for this event must match the connector and pool targeted by the initial operation. Connectors are
+//   allowed to trigger side-effects in other pools, but only the event from the targeted pool should use the original LocalID.
+// - The LocalID must not have been used yet. Connectors are allowed to emit multiple events in response to a single operation,
+//   but only the first of them can use the original LocalID.
+func (em *eventManager) loadTransferID(ctx context.Context, tx *fftypes.UUID, transfer *core.TokenTransfer) (*fftypes.UUID, error) {
+	// Find a matching operation within the transaction
 	fb := database.OperationQueryFactory.NewFilter(ctx)
 	filter := fb.And(
-		fb.Eq("tx", transfer.TX.ID),
-		fb.Eq("type", fftypes.OpTypeTokenTransfer),
+		fb.Eq("tx", tx),
+		fb.Eq("type", core.OpTypeTokenTransfer),
 	)
 	operations, _, err := em.database.GetOperations(ctx, filter)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
+
 	if len(operations) > 0 {
-		err = retrieveTokenTransferInputs(ctx, operations[0], transfer)
-		if err != nil {
+		// This transfer matches a transfer transaction+operation submitted by this node.
+		// Check the operation inputs to see if they match the connector and pool on this event.
+		if input, err := txcommon.RetrieveTokenTransferInputs(ctx, operations[0]); err != nil {
 			log.L(ctx).Warnf("Failed to read operation inputs for token transfer '%s': %s", transfer.ProtocolID, err)
+		} else if input != nil && input.Connector == transfer.Connector && input.Pool.Equals(transfer.Pool) {
+			// Check if the LocalID has already been used
+			if existing, err := em.database.GetTokenTransferByID(ctx, input.LocalID); err != nil {
+				return nil, err
+			} else if existing == nil {
+				// Everything matches - use the LocalID that was assigned up-front when the operation was submitted
+				return input.LocalID, nil
+			}
 		}
 	}
 
-	if transfer.LocalID == nil {
+	return fftypes.NewUUID(), nil
+}
+
+func (em *eventManager) persistTokenTransfer(ctx context.Context, transfer *tokens.TokenTransfer) (valid bool, err error) {
+	// Check that this is from a known pool
+	// TODO: should cache this lookup for efficiency
+	pool, err := em.database.GetTokenPoolByLocator(ctx, transfer.Connector, transfer.PoolLocator)
+	if err != nil {
+		return false, err
+	}
+	if pool == nil {
+		log.L(ctx).Infof("Token transfer received for unknown pool '%s' - ignoring: %s", transfer.PoolLocator, transfer.Event.ProtocolID)
+		return false, nil
+	}
+	transfer.Namespace = pool.Namespace
+	transfer.Pool = pool.ID
+
+	// Check that transfer has not already been recorded
+	if existing, err := em.database.GetTokenTransferByProtocolID(ctx, transfer.Connector, transfer.ProtocolID); err != nil {
+		return false, err
+	} else if existing != nil {
+		log.L(ctx).Warnf("Token transfer '%s' has already been recorded - ignoring", transfer.ProtocolID)
+		return false, nil
+	}
+
+	if transfer.TX.ID == nil {
 		transfer.LocalID = fftypes.NewUUID()
+	} else {
+		if transfer.LocalID, err = em.loadTransferID(ctx, transfer.TX.ID, &transfer.TokenTransfer); err != nil {
+			return false, err
+		}
+		if valid, err := em.txHelper.PersistTransaction(ctx, transfer.Namespace, transfer.TX.ID, transfer.TX.Type, transfer.Event.BlockchainTXID); err != nil || !valid {
+			return valid, err
+		}
 	}
 
-	transaction := &fftypes.Transaction{
-		ID:     transfer.TX.ID,
-		Status: fftypes.OpStatusSucceeded,
-		Subject: fftypes.TransactionSubject{
-			Namespace: ns,
-			Type:      transfer.TX.Type,
-			Signer:    transfer.Key,
-			Reference: transfer.LocalID,
-		},
-		ProtocolID: protocolTxID,
-		Info:       additionalInfo,
+	chainEvent := buildBlockchainEvent(pool.Namespace, nil, &transfer.Event, &core.BlockchainTransactionRef{
+		ID:           transfer.TX.ID,
+		Type:         transfer.TX.Type,
+		BlockchainID: transfer.Event.BlockchainTXID,
+	})
+	if err := em.maybePersistBlockchainEvent(ctx, chainEvent); err != nil {
+		return false, err
 	}
-	return em.txhelper.PersistTransaction(ctx, transaction)
+	em.emitBlockchainEventMetric(&transfer.Event)
+	transfer.BlockchainEvent = chainEvent.ID
+
+	if err := em.database.UpsertTokenTransfer(ctx, &transfer.TokenTransfer); err != nil {
+		log.L(ctx).Errorf("Failed to record token transfer '%s': %s", transfer.ProtocolID, err)
+		return false, err
+	}
+	if err := em.database.UpdateTokenBalances(ctx, &transfer.TokenTransfer); err != nil {
+		log.L(ctx).Errorf("Failed to update accounts %s -> %s for token transfer '%s': %s", transfer.From, transfer.To, transfer.ProtocolID, err)
+		return false, err
+	}
+
+	log.L(ctx).Infof("Token transfer recorded id=%s author=%s", transfer.ProtocolID, transfer.Key)
+	if em.metrics.IsMetricsEnabled() {
+		em.metrics.TransferConfirmed(&transfer.TokenTransfer)
+	}
+
+	return true, nil
 }
 
-func (em *eventManager) getBatchForTransfer(ctx context.Context, transfer *fftypes.TokenTransfer) (*fftypes.UUID, error) {
-	// Find the messages assocated with that data
-	var messages []*fftypes.Message
-	fb := database.MessageQueryFactory.NewFilter(ctx)
-	filter := fb.And(
-		fb.Eq("pending", true),
-		fb.Eq("hash", transfer.MessageHash),
-	)
-	messages, _, err := em.database.GetMessages(ctx, filter)
-	if err != nil || len(messages) == 0 {
-		return nil, err
-	}
-	return messages[0].BatchID, nil
-}
-
-func (em *eventManager) TokensTransferred(tk tokens.Plugin, transfer *fftypes.TokenTransfer, protocolTxID string, additionalInfo fftypes.JSONObject) error {
-	var batchID *fftypes.UUID
+func (em *eventManager) TokensTransferred(ti tokens.Plugin, transfer *tokens.TokenTransfer) error {
+	var msgIDforRewind *fftypes.UUID
 
 	err := em.retry.Do(em.ctx, "persist token transfer", func(attempt int) (bool, error) {
 		err := em.database.RunAsGroup(em.ctx, func(ctx context.Context) error {
-			// Check that this is from a known pool
-			pool, err := em.database.GetTokenPoolByProtocolID(ctx, transfer.PoolProtocolID)
-			if err != nil {
-				return err
-			}
-			if pool == nil {
-				log.L(ctx).Warnf("Token transfer received for unknown pool '%s' - ignoring: %s", transfer.PoolProtocolID, protocolTxID)
-				return nil
-			}
-
-			if transfer.TX.ID != nil {
-				if valid, err := em.persistTokenTransaction(ctx, pool.Namespace, transfer, protocolTxID, additionalInfo); err != nil || !valid {
-					return err
-				}
-			} else {
-				transfer.LocalID = fftypes.NewUUID()
-			}
-
-			if err := em.database.UpsertTokenTransfer(ctx, transfer); err != nil {
-				log.L(ctx).Errorf("Failed to record token transfer '%s': %s", transfer.ProtocolID, err)
+			if valid, err := em.persistTokenTransfer(ctx, transfer); !valid || err != nil {
 				return err
 			}
 
-			balance := &fftypes.TokenBalanceChange{
-				PoolProtocolID: transfer.PoolProtocolID,
-				TokenIndex:     transfer.TokenIndex,
-				Connector:      transfer.Connector,
-			}
-
-			if transfer.Type != fftypes.TokenTransferTypeMint {
-				balance.Key = transfer.From
-				balance.Amount.Int().Neg(transfer.Amount.Int())
-				if err := em.database.AddTokenAccountBalance(ctx, balance); err != nil {
-					log.L(ctx).Errorf("Failed to update account '%s' for token transfer '%s': %s", balance.Key, transfer.ProtocolID, err)
+			if transfer.Message != nil {
+				msg, err := em.database.GetMessageByID(ctx, transfer.Message)
+				switch {
+				case err != nil:
 					return err
+				case msg != nil && msg.State == core.MessageStateStaged:
+					// Message can now be sent
+					msg.State = core.MessageStateReady
+					if err := em.database.ReplaceMessage(ctx, msg); err != nil {
+						return err
+					}
+				default:
+					// Message might already have been received, we need to rewind
+					msgIDforRewind = transfer.Message
 				}
 			}
+			em.emitBlockchainEventMetric(&transfer.Event)
 
-			if transfer.Type != fftypes.TokenTransferTypeBurn {
-				balance.Key = transfer.To
-				balance.Amount.Int().Set(transfer.Amount.Int())
-				if err := em.database.AddTokenAccountBalance(ctx, balance); err != nil {
-					log.L(ctx).Errorf("Failed to update account '%s for token transfer '%s': %s", balance.Key, transfer.ProtocolID, err)
-					return err
-				}
-			}
-
-			log.L(ctx).Infof("Token transfer recorded id=%s author=%s", transfer.ProtocolID, transfer.Key)
-
-			if transfer.MessageHash != nil {
-				if batchID, err = em.getBatchForTransfer(ctx, transfer); err != nil {
-					log.L(ctx).Errorf("Failed to lookup batch for token transfer '%s': %s", transfer.ProtocolID, err)
-					return err
-				}
-			}
-
-			event := fftypes.NewEvent(fftypes.EventTypeTransferConfirmed, pool.Namespace, transfer.LocalID)
+			event := core.NewEvent(core.EventTypeTransferConfirmed, transfer.Namespace, transfer.LocalID, transfer.TX.ID, transfer.Pool.String())
 			return em.database.InsertEvent(ctx, event)
 		})
 		return err != nil, err // retry indefinitely (until context closes)
 	})
 
-	if err == nil {
-		// Initiate a rewind if a batch was potentially completed by the arrival of this transfer
-		if batchID != nil {
-			log.L(em.ctx).Infof("Batch '%s' contains reference to received transfer. Transfer='%s' Message='%s'", batchID, transfer.ProtocolID, transfer.MessageHash)
-			em.aggregator.offchainBatches <- batchID
-		}
+	// Initiate a rewind if a batch was potentially completed by the arrival of this transfer
+	if err == nil && msgIDforRewind != nil {
+		em.aggregator.queueMessageRewind(msgIDforRewind)
 	}
 
 	return err

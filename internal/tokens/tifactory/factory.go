@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -19,38 +19,31 @@ package tifactory
 import (
 	"context"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/tokens/fftokens"
 	"github.com/hyperledger/firefly/pkg/tokens"
 )
 
-var plugins = []tokens.Plugin{
-	&fftokens.FFTokens{},
+var pluginsByName = map[string]func() tokens.Plugin{
+	(*fftokens.FFTokens)(nil).Name(): func() tokens.Plugin { return &fftokens.FFTokens{} },
 }
 
-var pluginsByName = make(map[string]tokens.Plugin)
-
-func init() {
-	for _, p := range plugins {
-		pluginsByName[p.Name()] = p
-	}
-}
-
-func InitPrefix(prefix config.PrefixArray) {
-	prefix.AddKnownKey(tokens.TokensConfigConnector)
-	prefix.AddKnownKey(tokens.TokensConfigPlugin)
-	prefix.AddKnownKey(tokens.TokensConfigName)
-	for _, plugin := range plugins {
+func InitConfig(config config.ArraySection) {
+	config.AddKnownKey(tokens.TokensConfigConnector)
+	config.AddKnownKey(tokens.TokensConfigPlugin)
+	config.AddKnownKey(tokens.TokensConfigName)
+	for _, plugin := range pluginsByName {
 		// Accept a superset of configs allowed by all plugins
-		plugin.InitPrefix(prefix)
+		plugin().InitConfig(config)
 	}
 }
 
 func GetPlugin(ctx context.Context, connectorName string) (tokens.Plugin, error) {
 	plugin, ok := pluginsByName[connectorName]
 	if !ok {
-		return nil, i18n.NewError(ctx, i18n.MsgUnknownTokensPlugin, connectorName)
+		return nil, i18n.NewError(ctx, coremsgs.MsgUnknownTokensPlugin, connectorName)
 	}
-	return plugin, nil
+	return plugin(), nil
 }

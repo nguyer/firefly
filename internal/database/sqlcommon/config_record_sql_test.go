@@ -23,9 +23,9 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/log"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -39,7 +39,7 @@ func TestConfigRecordE2EWithDB(t *testing.T) {
 	// Create a new namespace entry
 	configRecord := &fftypes.ConfigRecord{
 		Key:   "foo",
-		Value: fftypes.Byteable(`{"foo":"bar"}`),
+		Value: fftypes.JSONAnyPtr(`{"foo":"bar"}`),
 	}
 	err := s.UpsertConfigRecord(ctx, configRecord, true)
 	assert.NoError(t, err)
@@ -56,7 +56,7 @@ func TestConfigRecordE2EWithDB(t *testing.T) {
 	// and does not account for the verification that happens at the higher level)
 	configRecordUpdated := &fftypes.ConfigRecord{
 		Key:   "foo",
-		Value: fftypes.Byteable(`{"fiz":"buzz"}`),
+		Value: fftypes.JSONAnyPtr(`{"fiz":"buzz"}`),
 	}
 	err = s.UpsertConfigRecord(context.Background(), configRecordUpdated, true)
 	assert.NoError(t, err)
@@ -176,7 +176,7 @@ func TestGetConfigRecordsBuildQueryFail(t *testing.T) {
 	s, _ := newMockProvider().init()
 	f := database.ConfigRecordQueryFactory.NewFilter(context.Background()).Eq("key", map[bool]bool{true: false})
 	_, _, err := s.GetConfigRecords(context.Background(), f)
-	assert.Regexp(t, "FF10149.*key", err)
+	assert.Regexp(t, "FF00143.*key", err)
 }
 
 func TestGettConfigRecordsReadMessageFail(t *testing.T) {

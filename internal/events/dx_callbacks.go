@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -18,112 +18,84 @@ package events
 
 import (
 	"context"
+	"database/sql/driver"
 	"encoding/json"
 
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
 	"github.com/hyperledger/firefly/pkg/dataexchange"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
-func (em *eventManager) MessageReceived(dx dataexchange.Plugin, peerID string, data []byte) error {
-
+// Check data exchange peer the data came from, has been registered to the org listed in the batch.
+// Note the on-chain identity check is performed separately by the aggregator (across broadcast and private consistently).
+func (em *eventManager) checkReceivedOffchainIdentity(ctx context.Context, peerID, author string) (node *core.Identity, err error) {
 	l := log.L(em.ctx)
 
-	// De-serializae the transport wrapper
-	var wrapper fftypes.TransportWrapper
-	err := json.Unmarshal(data, &wrapper)
+	// Resolve the node for the peer ID
+	node, err = em.identity.FindIdentityForVerifier(ctx, []core.IdentityType{core.IdentityTypeNode}, core.SystemNamespace, &core.VerifierRef{
+		Type:  core.VerifierTypeFFDXPeerID,
+		Value: peerID,
+	})
 	if err != nil {
-		l.Errorf("Invalid transmission from '%s': %s", peerID, err)
-		return nil
+		return nil, err
 	}
-
-	l.Infof("%s received from '%s' (len=%d)", wrapper.Type, peerID, len(data))
-
-	switch wrapper.Type {
-	case fftypes.TransportPayloadTypeBatch:
-		if wrapper.Batch == nil {
-			l.Errorf("Invalid transmission: nil batch")
-			return nil
-		}
-		return em.pinedBatchReceived(peerID, wrapper.Batch)
-	case fftypes.TransportPayloadTypeMessage:
-		if wrapper.Message == nil {
-			l.Errorf("Invalid transmission: nil message")
-			return nil
-		}
-		if wrapper.Group == nil {
-			l.Errorf("Invalid transmission: nil group")
-			return nil
-		}
-		return em.unpinnedMessageReceived(peerID, wrapper.Message, wrapper.Group, wrapper.Data)
-	default:
-		l.Errorf("Invalid transmission: unknonwn type '%s'", wrapper.Type)
-		return nil
-	}
-
-}
-
-func (em *eventManager) checkReceivedIdentity(ctx context.Context, peerID, author, signingKey string) (node *fftypes.Node, err error) {
-	l := log.L(em.ctx)
-
-	// Find the node associated with the peer
-	filter := database.NodeQueryFactory.NewFilter(ctx).Eq("dx.peer", peerID)
-	nodes, _, err := em.database.GetNodes(ctx, filter)
-	if err != nil {
-		l.Errorf("Failed to retrieve node: %v", err)
-		return nil, err // retry for persistence error
-	}
-	if len(nodes) < 1 {
-		l.Errorf("Node not found for peer %s", peerID)
-		return nil, nil
-	}
-	node = nodes[0]
 
 	// Find the identity in the mesage
-	org, err := em.database.GetOrganizationByIdentity(ctx, signingKey)
-	if err != nil {
+	org, retryable, err := em.identity.CachedIdentityLookupMustExist(ctx, author)
+	if err != nil && retryable {
 		l.Errorf("Failed to retrieve org: %v", err)
-		return nil, err // retry for persistence error
+		return nil, err // retryable error
 	}
-	if org == nil {
-		l.Errorf("Org not found for identity %s", author)
+	if org == nil || err != nil {
+		l.Errorf("Identity %s not found", author)
 		return nil, nil
 	}
 
 	// One of the orgs in the hierarchy of the author must be the owner of the peer node
 	candidate := org
-	foundNodeOrg := signingKey == node.Owner
-	for !foundNodeOrg && candidate.Parent != "" {
+	foundNodeOrg := org.ID.Equals(node.Parent)
+	for !foundNodeOrg && candidate.Parent != nil {
 		parent := candidate.Parent
-		candidate, err = em.database.GetOrganizationByIdentity(ctx, parent)
+		candidate, err = em.identity.CachedIdentityLookupByID(ctx, parent)
 		if err != nil {
 			l.Errorf("Failed to retrieve node org '%s': %v", parent, err)
 			return nil, err // retry for persistence error
 		}
 		if candidate == nil {
-			l.Errorf("Did not find org '%s' in chain for identity '%s'", parent, org.Identity)
+			l.Errorf("Did not find org '%s' in chain for identity '%s' (%s)", parent, org.DID, org.ID)
 			return nil, nil
 		}
-		foundNodeOrg = candidate.Identity == node.Owner
+		foundNodeOrg = candidate.ID.Equals(node.Parent)
 	}
 	if !foundNodeOrg {
-		l.Errorf("No org in the chain matches owner '%s' of node '%s' ('%s')", node.Owner, node.ID, node.Name)
+		l.Errorf("No org in the chain matches owner '%s' of node '%s' ('%s')", node.Parent, node.ID, node.Name)
 		return nil, nil
 	}
 
 	return node, nil
 }
 
-func (em *eventManager) pinedBatchReceived(peerID string, batch *fftypes.Batch) error {
+func (em *eventManager) privateBatchReceived(peerID string, batch *core.Batch, wrapperGroup *core.Group) (manifest string, err error) {
 
 	// Retry for persistence errors (not validation errors)
-	return em.retry.Do(em.ctx, "private batch received", func(attempt int) (bool, error) {
+	err = em.retry.Do(em.ctx, "private batch received", func(attempt int) (bool, error) {
 		return true, em.database.RunAsGroup(em.ctx, func(ctx context.Context) error {
 			l := log.L(ctx)
 
-			node, err := em.checkReceivedIdentity(ctx, peerID, batch.Author, batch.Key)
+			if wrapperGroup != nil && batch.Payload.TX.Type == core.TransactionTypeUnpinned {
+				valid, err := em.messaging.EnsureLocalGroup(ctx, wrapperGroup)
+				if err != nil {
+					return err
+				}
+				if !valid {
+					l.Errorf("Invalid transmission: invalid group: %+v", wrapperGroup)
+					return nil
+				}
+			}
+
+			node, err := em.checkReceivedOffchainIdentity(ctx, peerID, batch.Author)
 			if err != nil {
 				return err
 			}
@@ -132,181 +104,132 @@ func (em *eventManager) pinedBatchReceived(peerID string, batch *fftypes.Batch) 
 				return nil
 			}
 
-			valid, err := em.persistBatch(ctx, batch)
-			if err != nil {
-				l.Errorf("Batch received from %s/%s invalid: %s", node.Owner, node.Name, err)
+			persistedBatch, valid, err := em.persistBatch(ctx, batch)
+			if err != nil || !valid {
+				l.Errorf("Batch received from org=%s node=%s processing failed valid=%t: %s", node.Parent, node.Name, valid, err)
 				return err // retry - persistBatch only returns retryable errors
 			}
 
-			if valid {
-				em.aggregator.offchainBatches <- batch.ID
+			if batch.Payload.TX.Type == core.TransactionTypeUnpinned {
+				// We need to confirm all these messages immediately.
+				if err := em.markUnpinnedMessagesConfirmed(ctx, batch); err != nil {
+					return err
+				}
 			}
+			manifest = persistedBatch.Manifest.String()
 			return nil
 		})
 	})
-
+	if err != nil {
+		return "", err
+	}
+	// Poke the aggregator to do its stuff - after we have committed the transaction so the pins are visible
+	if batch.Payload.TX.Type == core.TransactionTypeBatchPin {
+		em.aggregator.queueBatchRewind(batch.ID)
+	}
+	return manifest, err
 }
 
-func (em *eventManager) BLOBReceived(dx dataexchange.Plugin, peerID string, hash fftypes.Bytes32, payloadRef string) error {
+func (em *eventManager) markUnpinnedMessagesConfirmed(ctx context.Context, batch *core.Batch) error {
+
+	// Update all the messages in the batch with the batch ID
+	msgIDs := make([]driver.Value, len(batch.Payload.Messages))
+	for i, msg := range batch.Payload.Messages {
+		msgIDs[i] = msg.Header.ID
+	}
+	fb := database.MessageQueryFactory.NewFilter(ctx)
+	filter := fb.And(
+		fb.In("id", msgIDs),
+		fb.Eq("state", core.MessageStatePending), // In the outside chance another state transition happens first (which supersedes this)
+	)
+
+	// Immediate confirmation if no transaction
+	update := database.MessageQueryFactory.NewUpdate(ctx).
+		Set("batch", batch.ID).
+		Set("state", core.MessageStateConfirmed).
+		Set("confirmed", fftypes.Now())
+
+	if err := em.database.UpdateMessages(ctx, filter, update); err != nil {
+		return err
+	}
+
+	for _, msg := range batch.Payload.Messages {
+		for _, topic := range msg.Header.Topics {
+			// One event per topic
+			event := core.NewEvent(core.EventTypeMessageConfirmed, batch.Namespace, msg.Header.ID, batch.Payload.TX.ID, topic)
+			event.Correlator = msg.Header.CID
+			if err := em.database.InsertEvent(ctx, event); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (em *eventManager) DXEvent(dx dataexchange.Plugin, event dataexchange.DXEvent) {
+	switch event.Type() {
+	case dataexchange.DXEventTypePrivateBlobReceived:
+		em.privateBlobReceived(dx, event)
+	case dataexchange.DXEventTypeMessageReceived:
+		// Batches are significant items of work in their own right, so get dispatched to their own routines
+		go em.messageReceived(dx, event)
+	default:
+		log.L(em.ctx).Errorf("Invalid DX event type from %s: %d", dx.Name(), event.Type())
+		event.Ack() // still ack
+	}
+}
+
+func (em *eventManager) messageReceived(dx dataexchange.Plugin, event dataexchange.DXEvent) {
 	l := log.L(em.ctx)
-	l.Debugf("Blob received event from data exhange: Peer='%s' Hash='%v' PayloadRef='%s'", peerID, &hash, payloadRef)
 
-	if peerID == "" || len(peerID) > 256 || payloadRef == "" || len(payloadRef) > 1024 {
-		l.Errorf("Invalid blob received event from data exhange: Peer='%s' Hash='%v' PayloadRef='%s'", peerID, &hash, payloadRef)
-		return nil // we consume the event still
+	mr := event.MessageReceived()
+
+	// De-serializae the transport wrapper
+	var wrapper *core.TransportWrapper
+	err := json.Unmarshal(mr.Data, &wrapper)
+	if err != nil {
+		l.Errorf("Invalid transmission from %s peer '%s': %s", dx.Name(), mr.PeerID, err)
+		event.AckWithManifest("")
+		return
 	}
+	if wrapper.Batch == nil {
+		l.Errorf("Invalid transmission: nil batch")
+		event.AckWithManifest("")
+		return
+	}
+	l.Infof("Private batch received from %s peer '%s' (len=%d)", dx.Name(), mr.PeerID, len(mr.Data))
 
-	// We process the event in a retry loop (which will break only if the context is closed), so that
-	// we only confirm consumption of the event to the plugin once we've processed it.
-	return em.retry.Do(em.ctx, "blob reference insert", func(attempt int) (retry bool, err error) {
-
-		batchIDs := make(map[fftypes.UUID]bool)
-
-		err = em.database.RunAsGroup(em.ctx, func(ctx context.Context) error {
-			// Insert the blob into the detabase
-			err := em.database.InsertBlob(ctx, &fftypes.Blob{
-				Peer:       peerID,
-				PayloadRef: payloadRef,
-				Hash:       &hash,
-				Created:    fftypes.Now(),
-			})
-			if err != nil {
-				return err
-			}
-
-			// Now we need to work out what pins potentially are unblocked by the arrival of this data
-
-			// Find any data associated with this blob
-			var data []*fftypes.DataRef
-			filter := database.DataQueryFactory.NewFilter(ctx).Eq("blob.hash", &hash)
-			data, _, err = em.database.GetDataRefs(ctx, filter)
-			if err != nil {
-				return err
-			}
-
-			// Find the messages assocated with that data
-			var messages []*fftypes.Message
-			for _, data := range data {
-				fb := database.MessageQueryFactory.NewFilter(ctx)
-				filter := fb.And(fb.Eq("pending", true))
-				messages, _, err = em.database.GetMessagesForData(ctx, data.ID, filter)
-				if err != nil {
-					return err
-				}
-			}
-
-			// Find the unique batch IDs for all the messages
-			for _, msg := range messages {
-				if msg.BatchID != nil {
-					batchIDs[*msg.BatchID] = true
-				}
-			}
-			return nil
-		})
-		if err != nil {
-			return true, err
-		}
-
-		// Initiate rewinds for all the batchIDs that are potentially completed by the arrival of this data
-		for bid := range batchIDs {
-			var batchID = bid // cannot use the address of the loop var
-			l.Infof("Batch '%s' contains reference to received blob. Peer='%s' Hash='%v' PayloadRef='%s'", &bid, peerID, &hash, payloadRef)
-			em.aggregator.offchainBatches <- &batchID
-		}
-
-		return false, nil
-	})
+	manifestString, err := em.privateBatchReceived(mr.PeerID, wrapper.Batch, wrapper.Group)
+	if err != nil {
+		l.Warnf("Exited while persisting batch: %s", err)
+		// We do NOT ack here as we broke out of the retry
+		return
+	}
+	event.AckWithManifest(manifestString)
 }
 
-func (em *eventManager) TransferResult(dx dataexchange.Plugin, trackingID string, status fftypes.OpStatus, info string, opOutput fftypes.JSONObject) error {
-	log.L(em.ctx).Infof("Transfer result %s=%s info='%s'", trackingID, status, info)
+func (em *eventManager) privateBlobReceived(dx dataexchange.Plugin, event dataexchange.DXEvent) {
+	br := event.PrivateBlobReceived()
+	log.L(em.ctx).Infof("Blob received event from data exchange %s: Peer='%s' Hash='%v' PayloadRef='%s'", dx.Name(), br.PeerID, &br.Hash, br.PayloadRef)
 
-	// We process the event in a retry loop (which will break only if the context is closed), so that
-	// we only confirm consumption of the event to the plugin once we've processed it.
-	return em.retry.Do(em.ctx, "blob reference insert", func(attempt int) (retry bool, err error) {
-
-		// Find a matching operation, for this plugin, with the specified ID.
-		// We retry a few times, as there's an outside possibility of the event arriving before we're finished persisting the operation itself
-		var operations []*fftypes.Operation
-		fb := database.OperationQueryFactory.NewFilter(em.ctx)
-		filter := fb.And(
-			fb.Eq("backendid", trackingID),
-			fb.Eq("plugin", dx.Name()),
-		)
-		operations, _, err = em.database.GetOperations(em.ctx, filter)
-		if err != nil {
-			return true, err
-		}
-		if len(operations) == 0 {
-			// we have a limit on how long we wait to correlate an operation if we don't have a DB erro,
-			// as it should only be a short window where the DB transaction to insert the operation is still
-			// outstanding
-			if attempt >= em.opCorrelationRetries {
-				log.L(em.ctx).Warnf("Unable to correlate %s event %s", dx.Name(), trackingID)
-				return false, nil // just skip this
-			}
-			return true, i18n.NewError(em.ctx, i18n.Msg404NotFound)
-		}
-
-		update := database.OperationQueryFactory.NewUpdate(em.ctx).
-			Set("status", status).
-			Set("error", info).
-			Set("output", opOutput)
-		for _, op := range operations {
-			if err := em.database.UpdateOperation(em.ctx, op.ID, update); err != nil {
-				return true, err // this is always retryable
-			}
-		}
-		return false, nil
-	})
-
-}
-
-func (em *eventManager) unpinnedMessageReceived(peerID string, message *fftypes.Message, group *fftypes.Group, data []*fftypes.Data) error {
-	if message.Header.TxType != fftypes.TransactionTypeNone {
-		log.L(em.ctx).Errorf("Unpinned message '%s' transaction type must be 'none'. TxType=%s", message.Header.ID, message.Header.TxType)
-		return nil
+	if br.PeerID == "" || len(br.PeerID) > 256 || br.PayloadRef == "" || len(br.PayloadRef) > 1024 {
+		log.L(em.ctx).Errorf("Invalid blob received event from data exhange: Peer='%s' Hash='%v' PayloadRef='%s'", br.PeerID, &br.Hash, br.PayloadRef)
+		event.Ack() // Still confirm the event
+		return
 	}
 
-	// Because we received this off chain, it's entirely possible the group init has not made it
-	// to us yet. So we need to go through the same processing as if we had initiated the group.
-	// This might result in both sides broadcasting a group-init message, but that's fine.
-
-	return em.retry.Do(em.ctx, "unpinned message received", func(attempt int) (bool, error) {
-		err := em.database.RunAsGroup(em.ctx, func(ctx context.Context) error {
-
-			if valid, err := em.syshandlers.EnsureLocalGroup(ctx, group); err != nil || !valid {
-				return err
-			}
-
-			node, err := em.checkReceivedIdentity(ctx, peerID, message.Header.Author, message.Header.Key)
-			if err != nil {
-				return err
-			}
-			if node == nil {
-				log.L(ctx).Errorf("Message received from invalid author '%s' for peer ID '%s'", message.Header.Author, peerID)
-				return nil
-			}
-
-			// Persist the data
-			for i, d := range data {
-				if ok, err := em.persistReceivedData(ctx, i, d, "message", message.Header.ID); err != nil || !ok {
-					return err
-				}
-			}
-
-			// Persist the message - immediately considered confirmed as this is an unpinned receive
-			message.Confirmed = fftypes.Now()
-			message.Pending = false
-			if ok, err := em.persistReceivedMessage(ctx, 0, message, "message", message.Header.ID); err != nil || !ok {
-				return err
-			}
-
-			// Assuming all was good, we
-			event := fftypes.NewEvent(fftypes.EventTypeMessageConfirmed, message.Header.Namespace, message.Header.ID)
-			return em.database.InsertEvent(ctx, event)
-		})
-		return err != nil, err
+	// Dispatch to the blob receiver for efficient batch DB operations
+	em.blobReceiver.blobReceived(em.ctx, &blobNotification{
+		blob: &core.Blob{
+			Peer:       br.PeerID,
+			PayloadRef: br.PayloadRef,
+			Hash:       &br.Hash,
+			Size:       br.Size,
+			Created:    fftypes.Now(),
+		},
+		onComplete: func() {
+			event.Ack()
+		},
 	})
-
 }

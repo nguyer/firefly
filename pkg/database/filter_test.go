@@ -21,7 +21,8 @@ import (
 	"database/sql/driver"
 	"testing"
 
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -42,7 +43,7 @@ func TestBuildMessageFilter(t *testing.T) {
 		Descending().
 		Finalize()
 	assert.NoError(t, err)
-	assert.Equal(t, "( namespace == 'ns1' ) && ( ( id == '35c11cba-adff-4a4d-970a-02e3a0858dc8' ) || ( id == 'caefb9d1-9fc9-4d6a-a155-514d3139adf7' ) ) && ( sequence > 12345 ) && ( confirmed == null ) sort=-namespace skip=50 limit=25 count=true", f.String())
+	assert.Equal(t, "( namespace == 'ns1' ) && ( ( id == '35c11cba-adff-4a4d-970a-02e3a0858dc8' ) || ( id == 'caefb9d1-9fc9-4d6a-a155-514d3139adf7' ) ) && ( sequence >> 12345 ) && ( confirmed == null ) sort=-namespace skip=50 limit=25 count=true", f.String())
 }
 
 func TestBuildMessageFilter2(t *testing.T) {
@@ -53,7 +54,7 @@ func TestBuildMessageFilter2(t *testing.T) {
 		Finalize()
 
 	assert.NoError(t, err)
-	assert.Equal(t, "sequence > 0 sort=sequence", f.String())
+	assert.Equal(t, "sequence >> 0 sort=sequence", f.String())
 }
 
 func TestBuildMessageFilter3(t *testing.T) {
@@ -76,7 +77,25 @@ func TestBuildMessageFilter3(t *testing.T) {
 		Sort("-sequence").
 		Finalize()
 	assert.NoError(t, err)
-	assert.Equal(t, "( created IN [1000000000,2000000000,3000000000] ) && ( created NI [1000000000,2000000000,3000000000] ) && ( created < 0 ) && ( created <= 0 ) && ( created >= 0 ) && ( created != 0 ) && ( sequence > 12345 ) && ( topics %= 'abc' ) && ( topics %! 'def' ) && ( topics ^= 'ghi' ) && ( topics ^! 'jkl' ) sort=-created,topics,-sequence", f.String())
+	assert.Equal(t, "( created IN [1000000000,2000000000,3000000000] ) && ( created NI [1000000000,2000000000,3000000000] ) && ( created << 0 ) && ( created <= 0 ) && ( created >= 0 ) && ( created != 0 ) && ( sequence >> 12345 ) && ( topics %= 'abc' ) && ( topics !% 'def' ) && ( topics :% 'ghi' ) && ( topics ;% 'jkl' ) sort=-created,topics,-sequence", f.String())
+}
+
+func TestBuildMessageFilter4(t *testing.T) {
+	fb := MessageQueryFactory.NewFilter(context.Background())
+	f, err := fb.And(
+		fb.IEq("topics", "abc"),
+		fb.NIeq("topics", "bcd"),
+		fb.StartsWith("topics", "cde"),
+		fb.IStartsWith("topics", "def"),
+		fb.NotStartsWith("topics", "efg"),
+		fb.NotIStartsWith("topics", "fgh"),
+		fb.EndsWith("topics", "hij"),
+		fb.IEndsWith("topics", "ikl"),
+		fb.NotEndsWith("topics", "lmn"),
+		fb.NotIEndsWith("topics", "mno"),
+	).Finalize()
+	assert.NoError(t, err)
+	assert.Equal(t, "( topics := 'abc' ) && ( topics ;= 'bcd' ) && ( topics ^= 'cde' ) && ( topics :^ 'def' ) && ( topics !^ 'efg' ) && ( topics ;^ 'fgh' ) && ( topics $= 'hij' ) && ( topics :$ 'ikl' ) && ( topics !$ 'lmn' ) && ( topics ;$ 'mno' )", f.String())
 }
 
 func TestBuildMessageBadInFilterField(t *testing.T) {
@@ -84,7 +103,7 @@ func TestBuildMessageBadInFilterField(t *testing.T) {
 	_, err := fb.And(
 		fb.In("!wrong", []driver.Value{"a", "b", "c"}),
 	).Finalize()
-	assert.Regexp(t, "FF10148", err)
+	assert.Regexp(t, "FF00142", err)
 }
 
 func TestBuildMessageBadInFilterValue(t *testing.T) {
@@ -92,7 +111,7 @@ func TestBuildMessageBadInFilterValue(t *testing.T) {
 	_, err := fb.And(
 		fb.In("sequence", []driver.Value{"!integer"}),
 	).Finalize()
-	assert.Regexp(t, "FF10149", err)
+	assert.Regexp(t, "FF00143", err)
 }
 
 func TestBuildMessageUUIDConvert(t *testing.T) {
@@ -112,7 +131,7 @@ func TestBuildMessageUUIDConvert(t *testing.T) {
 		fb.Eq("id", nilB32),
 	).Finalize()
 	assert.NoError(t, err)
-	assert.Equal(t, "( id == '4066abdc-8bbd-4472-9d29-1a55b467f9b9' ) && ( id == '4066abdc-8bbd-4472-9d29-1a55b467f9b9' ) && ( id IN ['4066abdc-8bbd-4472-9d29-1a55b467f9b9'] ) && ( id == '4066abdc-8bbd-4472-9d29-1a55b467f9b9' ) && ( id != null ) && ( id == '4066abdc-8bbd-4472-9d29-1a55b467f9b9' ) && ( id != '4066abdc-8bbd-4472-9d29-1a55b467f9b9' ) && ( id == null ) && ( id == null )", f.String())
+	assert.Equal(t, "( id == '4066abdc-8bbd-4472-9d29-1a55b467f9b9' ) && ( id == '4066abdc-8bbd-4472-9d29-1a55b467f9b9' ) && ( id IN ['4066abdc-8bbd-4472-9d29-1a55b467f9b9'] ) && ( id == '4066abdc-8bbd-4472-9d29-1a55b467f9b9' ) && ( id != null ) && ( id == '4066abdc-8bbd-4472-9d29-1a55b467f9b9' ) && ( id != '4066abdc-8bbd-4472-9d29-1a55b467f9b9' ) && ( id == '' ) && ( id == null )", f.String())
 }
 
 func TestBuildMessageBytes32Convert(t *testing.T) {
@@ -129,7 +148,7 @@ func TestBuildMessageBytes32Convert(t *testing.T) {
 		fb.Eq("hash", nilB32),
 	).Finalize()
 	assert.NoError(t, err)
-	assert.Equal(t, "( hash == '7f4806535f8b3d9bf178af053d2bbdb46047365466ed16bbb0732a71492bdaf0' ) && ( hash == '7f4806535f8b3d9bf178af053d2bbdb46047365466ed16bbb0732a71492bdaf0' ) && ( hash IN ['7f4806535f8b3d9bf178af053d2bbdb46047365466ed16bbb0732a71492bdaf0'] ) && ( hash == '7f4806535f8b3d9bf178af053d2bbdb46047365466ed16bbb0732a71492bdaf0' ) && ( hash != null ) && ( hash == null ) && ( hash == null )", f.String())
+	assert.Equal(t, "( hash == '7f4806535f8b3d9bf178af053d2bbdb46047365466ed16bbb0732a71492bdaf0' ) && ( hash == '7f4806535f8b3d9bf178af053d2bbdb46047365466ed16bbb0732a71492bdaf0' ) && ( hash IN ['7f4806535f8b3d9bf178af053d2bbdb46047365466ed16bbb0732a71492bdaf0'] ) && ( hash == '7f4806535f8b3d9bf178af053d2bbdb46047365466ed16bbb0732a71492bdaf0' ) && ( hash != null ) && ( hash == '' ) && ( hash == null )", f.String())
 }
 func TestBuildMessageIntConvert(t *testing.T) {
 	fb := MessageQueryFactory.NewFilter(context.Background())
@@ -142,7 +161,7 @@ func TestBuildMessageIntConvert(t *testing.T) {
 		fb.Lt("sequence", uint64(666)),
 	).Finalize()
 	assert.NoError(t, err)
-	assert.Equal(t, "( sequence < 111 ) && ( sequence < 222 ) && ( sequence < 333 ) && ( sequence < 444 ) && ( sequence < 555 ) && ( sequence < 666 )", f.String())
+	assert.Equal(t, "( sequence << 111 ) && ( sequence << 222 ) && ( sequence << 333 ) && ( sequence << 444 ) && ( sequence << 555 ) && ( sequence << 666 )", f.String())
 }
 
 func TestBuildMessageTimeConvert(t *testing.T) {
@@ -156,7 +175,7 @@ func TestBuildMessageTimeConvert(t *testing.T) {
 		fb.Lt("created", *fftypes.UnixTime(1621112824)),
 	).Finalize()
 	assert.NoError(t, err)
-	assert.Equal(t, "( created > 1621112824000000000 ) && ( created > 0 ) && ( created == 1621112874123456789 ) && ( created == null ) && ( created < 1621112824000000000 ) && ( created < 1621112824000000000 )", f.String())
+	assert.Equal(t, "( created >> 1621112824000000000 ) && ( created >> 0 ) && ( created == 1621112874123456789 ) && ( created == null ) && ( created << 1621112824000000000 ) && ( created << 1621112824000000000 )", f.String())
 }
 
 func TestBuildMessageStringConvert(t *testing.T) {
@@ -170,14 +189,13 @@ func TestBuildMessageStringConvert(t *testing.T) {
 		fb.Lt("namespace", uint(444)),
 		fb.Lt("namespace", uint32(555)),
 		fb.Lt("namespace", uint64(666)),
-		fb.Lt("namespace", nil),
 		fb.Lt("namespace", *u),
 		fb.Lt("namespace", u),
 		fb.Lt("namespace", *b32),
 		fb.Lt("namespace", b32),
 	).Finalize()
 	assert.NoError(t, err)
-	assert.Equal(t, "( namespace < '111' ) && ( namespace < '222' ) && ( namespace < '333' ) && ( namespace < '444' ) && ( namespace < '555' ) && ( namespace < '666' ) && ( namespace < '' ) && ( namespace < '3f96e0d5-a10e-47c6-87a0-f2e7604af179' ) && ( namespace < '3f96e0d5-a10e-47c6-87a0-f2e7604af179' ) && ( namespace < '3f96e0d5a10e47c687a0f2e7604af17900000000000000000000000000000000' ) && ( namespace < '3f96e0d5a10e47c687a0f2e7604af17900000000000000000000000000000000' )", f.String())
+	assert.Equal(t, "( namespace << '111' ) && ( namespace << '222' ) && ( namespace << '333' ) && ( namespace << '444' ) && ( namespace << '555' ) && ( namespace << '666' ) && ( namespace << '3f96e0d5-a10e-47c6-87a0-f2e7604af179' ) && ( namespace << '3f96e0d5-a10e-47c6-87a0-f2e7604af179' ) && ( namespace << '3f96e0d5a10e47c687a0f2e7604af17900000000000000000000000000000000' ) && ( namespace << '3f96e0d5a10e47c687a0f2e7604af17900000000000000000000000000000000' )", f.String())
 }
 
 func TestBuildMessageBoolConvert(t *testing.T) {
@@ -198,42 +216,22 @@ func TestBuildMessageBoolConvert(t *testing.T) {
 		fb.Eq("masked", nil),
 	).Finalize()
 	assert.NoError(t, err)
-	assert.Equal(t, "( masked == false ) && ( masked == true ) && ( masked == false ) && ( masked == true ) && ( masked == true ) && ( masked == false ) && ( masked == true ) && ( masked == true ) && ( masked == true ) && ( masked == true ) && ( masked == true ) && ( masked == true ) && ( masked == false )", f.String())
+	assert.Equal(t, "( masked == false ) && ( masked == true ) && ( masked == false ) && ( masked == true ) && ( masked == true ) && ( masked == false ) && ( masked == true ) && ( masked == true ) && ( masked == true ) && ( masked == true ) && ( masked == true ) && ( masked == true ) && ( masked == null )", f.String())
 }
 
-func TestBuildMessageSortableBoolConvert(t *testing.T) {
-	fb := MessageQueryFactory.NewFilter(context.Background())
-	f, err := fb.And(
-		fb.Eq("pending", false),
-		fb.Eq("pending", true),
-		fb.Eq("pending", "false"),
-		fb.Eq("pending", "true"),
-		fb.Eq("pending", "True"),
-		fb.Eq("pending", ""),
-		fb.Eq("pending", int(111)),
-		fb.Eq("pending", int32(222)),
-		fb.Eq("pending", int64(333)),
-		fb.Eq("pending", uint(444)),
-		fb.Eq("pending", uint32(555)),
-		fb.Eq("pending", uint64(666)),
-		fb.Eq("pending", nil),
-	).Finalize()
-	assert.NoError(t, err)
-	assert.Equal(t, "( pending == 0 ) && ( pending == 1 ) && ( pending == 0 ) && ( pending == 1 ) && ( pending == 1 ) && ( pending == 0 ) && ( pending == 1 ) && ( pending == 1 ) && ( pending == 1 ) && ( pending == 1 ) && ( pending == 1 ) && ( pending == 1 ) && ( pending == 0 )", f.String())
-}
 func TestBuildMessageJSONConvert(t *testing.T) {
-	fb := TransactionQueryFactory.NewFilter(context.Background())
+	fb := OperationQueryFactory.NewFilter(context.Background())
 	f, err := fb.And(
-		fb.Eq("info", nil),
-		fb.Eq("info", `{}`),
-		fb.Eq("info", []byte(`{}`)),
-		fb.Eq("info", fftypes.JSONObject{"some": "value"}),
+		fb.Eq("output", nil),
+		fb.Eq("output", `{}`),
+		fb.Eq("output", []byte(`{}`)),
+		fb.Eq("output", fftypes.JSONObject{"some": "value"}),
 	).Finalize()
 	assert.NoError(t, err)
-	assert.Equal(t, `( info == null ) && ( info == '{}' ) && ( info == '{}' ) && ( info == '{"some":"value"}' )`, f.String())
+	assert.Equal(t, `( output == null ) && ( output == '{}' ) && ( output == '{}' ) && ( output == '{"some":"value"}' )`, f.String())
 }
 
-func TestBuildFFNameArrayConvert(t *testing.T) {
+func TestBuildFFStringArrayConvert(t *testing.T) {
 	fb := MessageQueryFactory.NewFilter(context.Background())
 	f, err := fb.And(
 		fb.Eq("topics", nil),
@@ -241,43 +239,37 @@ func TestBuildFFNameArrayConvert(t *testing.T) {
 		fb.Eq("topics", []byte(`test2`)),
 	).Finalize()
 	assert.NoError(t, err)
-	assert.Equal(t, `( topics == '' ) && ( topics == 'test1' ) && ( topics == 'test2' )`, f.String())
+	assert.Equal(t, `( topics == null ) && ( topics == 'test1' ) && ( topics == 'test2' )`, f.String())
 }
 
 func TestBuildMessageFailStringConvert(t *testing.T) {
 	fb := MessageQueryFactory.NewFilter(context.Background())
 	_, err := fb.Lt("namespace", map[bool]bool{true: false}).Finalize()
-	assert.Regexp(t, "FF10149.*namespace", err)
+	assert.Regexp(t, "FF00143.*namespace", err)
 }
 
 func TestBuildMessageFailBoolConvert(t *testing.T) {
 	fb := PinQueryFactory.NewFilter(context.Background())
 	_, err := fb.Lt("masked", map[bool]bool{true: false}).Finalize()
-	assert.Regexp(t, "FF10149.*masked", err)
+	assert.Regexp(t, "FF00143.*masked", err)
 }
 
 func TestBuildMessageFailBypes32Convert(t *testing.T) {
 	fb := MessageQueryFactory.NewFilter(context.Background())
 	_, err := fb.Lt("group", map[bool]bool{true: false}).Finalize()
-	assert.Regexp(t, "FF10149.*group", err)
-}
-
-func TestBuildMessageFailSortableBoolConvert(t *testing.T) {
-	fb := MessageQueryFactory.NewFilter(context.Background())
-	_, err := fb.Lt("pending", map[bool]bool{true: false}).Finalize()
-	assert.Regexp(t, "FF10149.*pending", err)
+	assert.Regexp(t, "FF00143.*group", err)
 }
 
 func TestBuildMessageFailInt64Convert(t *testing.T) {
 	fb := MessageQueryFactory.NewFilter(context.Background())
 	_, err := fb.Lt("sequence", map[bool]bool{true: false}).Finalize()
-	assert.Regexp(t, "FF10149.*sequence", err)
+	assert.Regexp(t, "FF00143.*sequence", err)
 }
 
 func TestBuildMessageFailTimeConvert(t *testing.T) {
 	fb := MessageQueryFactory.NewFilter(context.Background())
 	_, err := fb.Lt("created", map[bool]bool{true: false}).Finalize()
-	assert.Regexp(t, "FF10149.*created", err)
+	assert.Regexp(t, "FF00143.*created", err)
 }
 
 func TestQueryFactoryBadField(t *testing.T) {
@@ -285,7 +277,7 @@ func TestQueryFactoryBadField(t *testing.T) {
 	_, err := fb.And(
 		fb.Eq("wrong", "ns1"),
 	).Finalize()
-	assert.Regexp(t, "FF10148.*wrong", err)
+	assert.Regexp(t, "FF00142.*wrong", err)
 }
 
 func TestQueryFactoryBadValue(t *testing.T) {
@@ -293,7 +285,7 @@ func TestQueryFactoryBadValue(t *testing.T) {
 	_, err := fb.And(
 		fb.Eq("sequence", "not an int"),
 	).Finalize()
-	assert.Regexp(t, "FF10149.*sequence", err)
+	assert.Regexp(t, "FF00143.*sequence", err)
 }
 
 func TestQueryFactoryBadNestedValue(t *testing.T) {
@@ -303,7 +295,23 @@ func TestQueryFactoryBadNestedValue(t *testing.T) {
 			fb.Eq("sequence", "not an int"),
 		),
 	).Finalize()
-	assert.Regexp(t, "FF10149.*sequence", err)
+	assert.Regexp(t, "FF00143.*sequence", err)
+}
+
+func TestQueryFactoryStringMatchNonString(t *testing.T) {
+	fb := MessageQueryFactory.NewFilter(context.Background())
+	_, err := fb.And(
+		fb.Contains("sequence", "stuff"),
+	).Finalize()
+	assert.Regexp(t, "FF00145", err)
+}
+
+func TestQueryFactoryNullGreaterThan(t *testing.T) {
+	fb := DataQueryFactory.NewFilter(context.Background())
+	_, err := fb.And(
+		fb.Gt("created", nil),
+	).Finalize()
+	assert.Regexp(t, "FF00144", err)
 }
 
 func TestQueryFactoryGetFields(t *testing.T) {
@@ -317,9 +325,9 @@ func TestQueryFactoryGetBuilder(t *testing.T) {
 }
 
 func TestBuildMessageFailJSONConvert(t *testing.T) {
-	fb := TransactionQueryFactory.NewFilter(context.Background())
-	_, err := fb.Lt("info", map[bool]bool{true: false}).Finalize()
-	assert.Regexp(t, "FF10149.*info", err)
+	fb := OperationQueryFactory.NewFilter(context.Background())
+	_, err := fb.Lt("output", map[bool]bool{true: false}).Finalize()
+	assert.Regexp(t, "FF00143.*output", err)
 }
 
 func TestStringsForTypes(t *testing.T) {
@@ -332,7 +340,6 @@ func TestStringsForTypes(t *testing.T) {
 	now := fftypes.Now()
 	assert.Equal(t, now.String(), (&timeField{t: now}).String())
 	assert.Equal(t, `{"some":"value"}`, (&jsonField{b: []byte(`{"some":"value"}`)}).String())
-	assert.Equal(t, "t1,t2", (&ffNameArrayField{na: fftypes.FFNameArray{"t1", "t2"}}).String())
+	assert.Equal(t, "t1,t2", (&ffNameArrayField{na: core.FFStringArray{"t1", "t2"}}).String())
 	assert.Equal(t, "true", (&boolField{b: true}).String())
-	assert.Equal(t, "true", (&sortableBoolField{b: true}).String())
 }

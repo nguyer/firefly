@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -20,33 +20,27 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
+	"github.com/hyperledger/firefly/internal/coremsgs"
 	"github.com/hyperledger/firefly/internal/oapispec"
-	"github.com/hyperledger/firefly/pkg/fftypes"
+	"github.com/hyperledger/firefly/pkg/core"
 )
 
 var postTokenMint = &oapispec.Route{
-	Name:   "postTokenMint",
-	Path:   "namespaces/{ns}/tokens/{type}/pools/{name}/mint",
-	Method: http.MethodPost,
-	PathParams: []*oapispec.PathParam{
-		{Name: "ns", ExampleFromConf: config.NamespacesDefault, Description: i18n.MsgTBD},
-		{Name: "type", Description: i18n.MsgTBD},
-		{Name: "name", Description: i18n.MsgTBD},
-	},
+	Name:       "postTokenMint",
+	Path:       "tokens/mint",
+	Method:     http.MethodPost,
+	PathParams: nil,
 	QueryParams: []*oapispec.QueryParam{
-		{Name: "confirm", Description: i18n.MsgConfirmQueryParam, IsBool: true},
+		{Name: "confirm", Description: coremsgs.APIConfirmQueryParam, IsBool: true},
 	},
 	FilterFactory:   nil,
-	Description:     i18n.MsgTBD,
-	JSONInputValue:  func() interface{} { return &fftypes.TokenTransferInput{} },
-	JSONInputMask:   []string{"Type", "LocalID", "PoolProtocolID", "TokenIndex", "From", "ProtocolID", "MessageHash", "Connector", "TX", "Created"},
-	JSONOutputValue: func() interface{} { return &fftypes.TokenTransfer{} },
+	Description:     coremsgs.APIEndpointsPostTokenMint,
+	JSONInputValue:  func() interface{} { return &core.TokenTransferInput{} },
+	JSONOutputValue: func() interface{} { return &core.TokenTransfer{} },
 	JSONOutputCodes: []int{http.StatusAccepted, http.StatusOK},
 	JSONHandler: func(r *oapispec.APIRequest) (output interface{}, err error) {
 		waitConfirm := strings.EqualFold(r.QP["confirm"], "true")
 		r.SuccessStatus = syncRetcode(waitConfirm)
-		return r.Or.Assets().MintTokens(r.Ctx, r.PP["ns"], r.PP["type"], r.PP["name"], r.Input.(*fftypes.TokenTransferInput), waitConfirm)
+		return getOr(r.Ctx).Assets().MintTokens(r.Ctx, extractNamespace(r.PP), r.Input.(*core.TokenTransferInput), waitConfirm)
 	},
 }

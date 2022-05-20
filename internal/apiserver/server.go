@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -29,24 +29,38 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/hyperledger/firefly/internal/coreconfig"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/internal/metrics"
+	"github.com/hyperledger/firefly/internal/oapiffi"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/ghodss/yaml"
 	"github.com/gorilla/mux"
-	"github.com/hyperledger/firefly/internal/config"
+
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/httpserver"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
 	"github.com/hyperledger/firefly/internal/events/eifactory"
 	"github.com/hyperledger/firefly/internal/events/websockets"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
 	"github.com/hyperledger/firefly/internal/oapispec"
 	"github.com/hyperledger/firefly/internal/orchestrator"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
+
+type orchestratorContextKey struct{}
 
 var ffcodeExtractor = regexp.MustCompile(`^(FF\d+):`)
 
 var (
-	adminConfigPrefix = config.NewPluginConfig("admin")
-	apiConfigPrefix   = config.NewPluginConfig("http")
+	adminConfig   = config.RootSection("admin")
+	apiConfig     = config.RootSection("http")
+	metricsConfig = config.RootSection("metrics")
+	corsConfig    = config.RootSection("cors")
 )
 
 // Server is the external interface for the API Server
@@ -61,52 +75,74 @@ type apiServer struct {
 	maxFilterSkip      uint64
 	apiTimeout         time.Duration
 	apiMaxTimeout      time.Duration
+	metricsEnabled     bool
+	ffiSwaggerGen      oapiffi.FFISwaggerGen
 }
 
 func InitConfig() {
-	initHTTPConfPrefx(apiConfigPrefix, 5000)
-	initHTTPConfPrefx(adminConfigPrefix, 5001)
+	httpserver.InitHTTPConfig(apiConfig, 5000)
+	httpserver.InitHTTPConfig(adminConfig, 5001)
+	httpserver.InitHTTPConfig(metricsConfig, 6000)
+	httpserver.InitCORSConfig(corsConfig)
+	initMetricsConfig(metricsConfig)
 }
 
 func NewAPIServer() Server {
 	return &apiServer{
-		defaultFilterLimit: uint64(config.GetUint(config.APIDefaultFilterLimit)),
-		maxFilterLimit:     uint64(config.GetUint(config.APIMaxFilterLimit)),
-		maxFilterSkip:      uint64(config.GetUint(config.APIMaxFilterSkip)),
-		apiTimeout:         config.GetDuration(config.APIRequestTimeout),
-		apiMaxTimeout:      config.GetDuration(config.APIRequestMaxTimeout),
+		defaultFilterLimit: uint64(config.GetUint(coreconfig.APIDefaultFilterLimit)),
+		maxFilterLimit:     uint64(config.GetUint(coreconfig.APIMaxFilterLimit)),
+		maxFilterSkip:      uint64(config.GetUint(coreconfig.APIMaxFilterSkip)),
+		apiTimeout:         config.GetDuration(coreconfig.APIRequestTimeout),
+		apiMaxTimeout:      config.GetDuration(coreconfig.APIRequestMaxTimeout),
+		metricsEnabled:     config.GetBool(coreconfig.MetricsEnabled),
+		ffiSwaggerGen:      oapiffi.NewFFISwaggerGen(),
 	}
+}
+
+func getOr(ctx context.Context) orchestrator.Orchestrator {
+	return ctx.Value(orchestratorContextKey{}).(orchestrator.Orchestrator)
 }
 
 // Serve is the main entry point for the API Server
 func (as *apiServer) Serve(ctx context.Context, o orchestrator.Orchestrator) (err error) {
 	httpErrChan := make(chan error)
 	adminErrChan := make(chan error)
+	metricsErrChan := make(chan error)
 
 	if !o.IsPreInit() {
-		apiHTTPServer, err := newHTTPServer(ctx, "api", as.createMuxRouter(ctx, o), httpErrChan, apiConfigPrefix)
+		apiHTTPServer, err := httpserver.NewHTTPServer(ctx, "api", as.createMuxRouter(ctx, o), httpErrChan, apiConfig, corsConfig)
 		if err != nil {
 			return err
 		}
-		go apiHTTPServer.serveHTTP(ctx)
+		go apiHTTPServer.ServeHTTP(ctx)
 	}
 
-	if config.GetBool(config.AdminEnabled) {
-		adminHTTPServer, err := newHTTPServer(ctx, "admin", as.createAdminMuxRouter(o), adminErrChan, adminConfigPrefix)
+	if config.GetBool(coreconfig.AdminEnabled) {
+		adminHTTPServer, err := httpserver.NewHTTPServer(ctx, "admin", as.createAdminMuxRouter(o), adminErrChan, adminConfig, corsConfig)
 		if err != nil {
 			return err
 		}
-		go adminHTTPServer.serveHTTP(ctx)
+		go adminHTTPServer.ServeHTTP(ctx)
 	}
 
-	return as.waitForServerStop(httpErrChan, adminErrChan)
+	if as.metricsEnabled {
+		metricsHTTPServer, err := httpserver.NewHTTPServer(ctx, "metrics", as.createMetricsMuxRouter(), metricsErrChan, metricsConfig, corsConfig)
+		if err != nil {
+			return err
+		}
+		go metricsHTTPServer.ServeHTTP(ctx)
+	}
+
+	return as.waitForServerStop(httpErrChan, adminErrChan, metricsErrChan)
 }
 
-func (as *apiServer) waitForServerStop(httpErrChan, adminErrChan chan error) error {
+func (as *apiServer) waitForServerStop(httpErrChan, adminErrChan, metricsErrChan chan error) error {
 	select {
 	case err := <-httpErrChan:
 		return err
 	case err := <-adminErrChan:
+		return err
+	case err := <-metricsErrChan:
 		return err
 	}
 }
@@ -114,7 +150,7 @@ func (as *apiServer) waitForServerStop(httpErrChan, adminErrChan chan error) err
 type multipartState struct {
 	mpr        *multipart.Reader
 	formParams map[string]string
-	part       *fftypes.Multipart
+	part       *core.Multipart
 	close      func()
 }
 
@@ -125,19 +161,19 @@ func (as *apiServer) getFilePart(req *http.Request) (*multipartState, error) {
 	l := log.L(ctx)
 	mpr, err := req.MultipartReader()
 	if err != nil {
-		return nil, i18n.WrapError(ctx, err, i18n.MsgMultiPartFormReadError)
+		return nil, i18n.WrapError(ctx, err, coremsgs.MsgMultiPartFormReadError)
 	}
 	for {
 		part, err := mpr.NextPart()
 		if err != nil {
-			return nil, i18n.WrapError(ctx, err, i18n.MsgMultiPartFormReadError)
+			return nil, i18n.WrapError(ctx, err, coremsgs.MsgMultiPartFormReadError)
 		}
 		if part.FileName() == "" {
 			value, _ := ioutil.ReadAll(part)
 			formParams[part.FormName()] = string(value)
 		} else {
 			l.Debugf("Processing multi-part upload. Field='%s' Filename='%s'", part.FormName(), part.FileName())
-			mp := &fftypes.Multipart{
+			mp := &core.Multipart{
 				Data:     part,
 				Filename: part.FileName(),
 				Mimetype: part.Header.Get("Content-Disposition"),
@@ -177,7 +213,7 @@ func (as *apiServer) getParams(req *http.Request, route *oapispec.Route) (queryP
 	return queryParams, pathParams
 }
 
-func (as *apiServer) routeHandler(o orchestrator.Orchestrator, route *oapispec.Route) http.HandlerFunc {
+func (as *apiServer) routeHandler(o orchestrator.Orchestrator, apiBaseURL string, route *oapispec.Route) http.HandlerFunc {
 	// Check the mandatory parts are ok at startup time
 	return as.apiWrapper(func(res http.ResponseWriter, req *http.Request) (int, error) {
 
@@ -202,7 +238,7 @@ func (as *apiServer) routeHandler(o orchestrator.Orchestrator, route *oapispec.R
 					err = json.NewDecoder(req.Body).Decode(&jsonInput)
 				}
 			default:
-				return 415, i18n.NewError(req.Context(), i18n.MsgInvalidContentType)
+				return 415, i18n.NewError(req.Context(), coremsgs.MsgInvalidContentType)
 			}
 		}
 
@@ -217,15 +253,18 @@ func (as *apiServer) routeHandler(o orchestrator.Orchestrator, route *oapispec.R
 		}
 
 		if err == nil {
+			rCtx := context.WithValue(req.Context(), orchestratorContextKey{}, o)
 			r := &oapispec.APIRequest{
-				Ctx:           req.Context(),
-				Or:            o,
-				Req:           req,
-				PP:            pathParams,
-				QP:            queryParams,
-				Filter:        filter,
-				Input:         jsonInput,
-				SuccessStatus: http.StatusOK,
+				Ctx:             rCtx,
+				Or:              o,
+				Req:             req,
+				PP:              pathParams,
+				QP:              queryParams,
+				Filter:          filter,
+				Input:           jsonInput,
+				SuccessStatus:   http.StatusOK,
+				APIBaseURL:      apiBaseURL,
+				ResponseHeaders: res.Header(),
 			}
 			if len(route.JSONOutputCodes) > 0 {
 				r.SuccessStatus = route.JSONOutputCodes[0]
@@ -245,7 +284,7 @@ func (as *apiServer) routeHandler(o orchestrator.Orchestrator, route *oapispec.R
 			// to hold everything in memory.
 			trailing, expectEOF := multipart.mpr.NextPart()
 			if expectEOF == nil {
-				err = i18n.NewError(req.Context(), i18n.MsgFieldsAfterFile, trailing.FormName())
+				err = i18n.NewError(req.Context(), coremsgs.MsgFieldsAfterFile, trailing.FormName())
 			}
 		}
 		if err == nil {
@@ -269,7 +308,7 @@ func (as *apiServer) handleOutput(ctx context.Context, res http.ResponseWriter, 
 	switch {
 	case isNil:
 		if status != 204 {
-			return 404, i18n.NewError(ctx, i18n.Msg404NoResult)
+			return 404, i18n.NewError(ctx, coremsgs.Msg404NoResult)
 		}
 		res.WriteHeader(204)
 	case reader != nil:
@@ -283,7 +322,7 @@ func (as *apiServer) handleOutput(ctx context.Context, res http.ResponseWriter, 
 		marshalErr = json.NewEncoder(res).Encode(output)
 	}
 	if marshalErr != nil {
-		err := i18n.WrapError(ctx, marshalErr, i18n.MsgResponseMarshalError)
+		err := i18n.WrapError(ctx, marshalErr, coremsgs.MsgResponseMarshalError)
 		log.L(ctx).Errorf(err.Error())
 		return 500, err
 	}
@@ -346,7 +385,7 @@ func (as *apiServer) apiWrapper(handler func(res http.ResponseWriter, req *http.
 				case <-ctx.Done():
 					l.Errorf("Request failed and context is closed. Returning %d (overriding %d): %s", http.StatusRequestTimeout, status, err)
 					status = http.StatusRequestTimeout
-					err = i18n.WrapError(ctx, err, i18n.MsgRequestTimeout, httpReqID, durationMS)
+					err = i18n.WrapError(ctx, err, coremsgs.MsgRequestTimeout, httpReqID, durationMS)
 				default:
 				}
 			}
@@ -369,7 +408,7 @@ func (as *apiServer) apiWrapper(handler func(res http.ResponseWriter, req *http.
 
 func (as *apiServer) notFoundHandler(res http.ResponseWriter, req *http.Request) (status int, err error) {
 	res.Header().Add("Content-Type", "application/json")
-	return 404, i18n.NewError(req.Context(), i18n.Msg404NotFound)
+	return 404, i18n.NewError(req.Context(), coremsgs.Msg404NotFound)
 }
 
 func (as *apiServer) swaggerUIHandler(url string) func(res http.ResponseWriter, req *http.Request) (status int, err error) {
@@ -380,14 +419,14 @@ func (as *apiServer) swaggerUIHandler(url string) func(res http.ResponseWriter, 
 	}
 }
 
-func (as *apiServer) getPublicURL(conf config.Prefix, pathPrefix string) string {
-	publicURL := conf.GetString(HTTPConfPublicURL)
+func (as *apiServer) getPublicURL(conf config.Section, pathPrefix string) string {
+	publicURL := conf.GetString(httpserver.HTTPConfPublicURL)
 	if publicURL == "" {
 		proto := "https"
-		if !conf.GetBool(HTTPConfTLSEnabled) {
+		if !conf.GetBool(httpserver.HTTPConfTLSEnabled) {
 			proto = "http"
 		}
-		publicURL = fmt.Sprintf("%s://%s:%s", proto, conf.GetString(HTTPConfAddress), conf.GetString(HTTPConfPort))
+		publicURL = fmt.Sprintf("%s://%s:%s", proto, conf.GetString(httpserver.HTTPConfAddress), conf.GetString(httpserver.HTTPConfPort))
 	}
 	if pathPrefix != "" {
 		publicURL += "/" + pathPrefix
@@ -395,17 +434,28 @@ func (as *apiServer) getPublicURL(conf config.Prefix, pathPrefix string) string 
 	return publicURL
 }
 
-func (as *apiServer) swaggerHandler(routes []*oapispec.Route, url string) func(res http.ResponseWriter, req *http.Request) (status int, err error) {
+func (as *apiServer) swaggerGenConf(apiBaseURL string) *oapispec.SwaggerGenConfig {
+	return &oapispec.SwaggerGenConfig{
+		BaseURL:                   apiBaseURL,
+		Title:                     "FireFly",
+		Version:                   "1.0",
+		PanicOnMissingDescription: config.GetBool(coreconfig.APIOASPanicOnMissingDescription),
+	}
+}
+
+func (as *apiServer) swaggerHandler(generator func(req *http.Request) (*openapi3.T, error)) func(res http.ResponseWriter, req *http.Request) (status int, err error) {
 	return func(res http.ResponseWriter, req *http.Request) (status int, err error) {
 		vars := mux.Vars(req)
+		doc, err := generator(req)
+		if err != nil {
+			return 500, err
+		}
 		if vars["ext"] == ".json" {
 			res.Header().Add("Content-Type", "application/json")
-			doc := oapispec.SwaggerGen(req.Context(), routes, url)
 			b, _ := json.Marshal(&doc)
 			_, _ = res.Write(b)
 		} else {
 			res.Header().Add("Content-Type", "application/x-yaml")
-			doc := oapispec.SwaggerGen(req.Context(), routes, url)
 			b, _ := yaml.Marshal(&doc)
 			_, _ = res.Write(b)
 		}
@@ -413,24 +463,65 @@ func (as *apiServer) swaggerHandler(routes []*oapispec.Route, url string) func(r
 	}
 }
 
+func (as *apiServer) swaggerGenerator(routes []*oapispec.Route, apiBaseURL string) func(req *http.Request) (*openapi3.T, error) {
+	return func(req *http.Request) (*openapi3.T, error) {
+		return oapispec.SwaggerGen(req.Context(), routes, as.swaggerGenConf(apiBaseURL)), nil
+	}
+}
+
+func (as *apiServer) contractSwaggerGenerator(o orchestrator.Orchestrator, apiBaseURL string) func(req *http.Request) (*openapi3.T, error) {
+	return func(req *http.Request) (*openapi3.T, error) {
+		cm := o.Contracts()
+		vars := mux.Vars(req)
+		api, err := cm.GetContractAPI(req.Context(), apiBaseURL, vars["ns"], vars["apiName"])
+		if err != nil {
+			return nil, err
+		} else if api == nil || api.Interface == nil {
+			return nil, i18n.NewError(req.Context(), coremsgs.Msg404NoResult)
+		}
+
+		ffi, err := cm.GetFFIByIDWithChildren(req.Context(), api.Interface.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		baseURL := fmt.Sprintf("%s/namespaces/%s/apis/%s", apiBaseURL, vars["ns"], vars["apiName"])
+		return as.ffiSwaggerGen.Generate(req.Context(), baseURL, api, ffi), nil
+	}
+}
+
 func (as *apiServer) createMuxRouter(ctx context.Context, o orchestrator.Orchestrator) *mux.Router {
 	r := mux.NewRouter()
+
+	if as.metricsEnabled {
+		r.Use(metrics.GetRestServerInstrumentation().Middleware)
+	}
+
+	publicURL := as.getPublicURL(apiConfig, "")
+	apiBaseURL := fmt.Sprintf("%s/api/v1", publicURL)
 	for _, route := range routes {
 		if route.JSONHandler != nil {
-			r.HandleFunc(fmt.Sprintf("/api/v1/%s", route.Path), as.routeHandler(o, route)).
+			r.HandleFunc(fmt.Sprintf("/api/v1/%s", route.Path), as.routeHandler(o, apiBaseURL, route)).
 				Methods(route.Method)
 		}
 	}
-	ws, _ := eifactory.GetPlugin(ctx, "websockets")
-	publicURL := as.getPublicURL(apiConfigPrefix, "")
-	r.HandleFunc(`/api/swagger{ext:\.yaml|\.json|}`, as.apiWrapper(as.swaggerHandler(routes, publicURL)))
-	r.HandleFunc(`/api`, as.apiWrapper(as.swaggerUIHandler(publicURL)))
+
+	r.HandleFunc(`/api/v1/namespaces/{ns}/apis/{apiName}/api/swagger{ext:\.yaml|\.json|}`, as.apiWrapper(as.swaggerHandler(as.contractSwaggerGenerator(o, apiBaseURL))))
+	r.HandleFunc(`/api/v1/namespaces/{ns}/apis/{apiName}/api`, func(rw http.ResponseWriter, req *http.Request) {
+		url := req.URL.String() + "/swagger.yaml"
+		handler := as.apiWrapper(as.swaggerUIHandler(url))
+		handler(rw, req)
+	})
+
+	r.HandleFunc(`/api/swagger{ext:\.yaml|\.json|}`, as.apiWrapper(as.swaggerHandler(as.swaggerGenerator(routes, apiBaseURL))))
+	r.HandleFunc(`/api`, as.apiWrapper(as.swaggerUIHandler(publicURL+"/api/swagger.yaml")))
 	r.HandleFunc(`/favicon{any:.*}.png`, favIcons)
 
+	ws, _ := eifactory.GetPlugin(ctx, "websockets")
 	r.HandleFunc(`/ws`, ws.(*websockets.WebSockets).ServeHTTP)
 
-	uiPath := config.GetString(config.UIPath)
-	if uiPath != "" && config.GetBool(config.UIEnabled) {
+	uiPath := config.GetString(coreconfig.UIPath)
+	if uiPath != "" && config.GetBool(coreconfig.UIEnabled) {
 		r.PathPrefix(`/ui`).Handler(newStaticHandler(uiPath, "index.html", `/ui`))
 	}
 
@@ -438,18 +529,41 @@ func (as *apiServer) createMuxRouter(ctx context.Context, o orchestrator.Orchest
 	return r
 }
 
+func (as *apiServer) adminWSHandler(o orchestrator.Orchestrator) http.HandlerFunc {
+	// The admin events listener will be initialized when we start, so we access it it from Orchestrator on demand
+	return func(w http.ResponseWriter, r *http.Request) {
+		o.AdminEvents().ServeHTTPWebSocketListener(w, r)
+	}
+}
+
 func (as *apiServer) createAdminMuxRouter(o orchestrator.Orchestrator) *mux.Router {
 	r := mux.NewRouter()
+	if as.metricsEnabled {
+		r.Use(metrics.GetAdminServerInstrumentation().Middleware)
+	}
+
+	publicURL := as.getPublicURL(adminConfig, "admin")
+	apiBaseURL := fmt.Sprintf("%s/admin/api/v1", publicURL)
 	for _, route := range adminRoutes {
 		if route.JSONHandler != nil {
-			r.HandleFunc(fmt.Sprintf("/admin/api/v1/%s", route.Path), as.routeHandler(o, route)).
+			r.HandleFunc(fmt.Sprintf("/admin/api/v1/%s", route.Path), as.routeHandler(o, apiBaseURL, route)).
 				Methods(route.Method)
 		}
 	}
-	publicURL := as.getPublicURL(adminConfigPrefix, "admin")
-	r.HandleFunc(`/admin/api/swagger{ext:\.yaml|\.json|}`, as.apiWrapper(as.swaggerHandler(adminRoutes, publicURL)))
-	r.HandleFunc(`/admin/api`, as.apiWrapper(as.swaggerUIHandler(publicURL)))
+	r.HandleFunc(`/admin/api/swagger{ext:\.yaml|\.json|}`, as.apiWrapper(as.swaggerHandler(as.swaggerGenerator(adminRoutes, apiBaseURL))))
+	r.HandleFunc(`/admin/api`, as.apiWrapper(as.swaggerUIHandler(publicURL+"/api/swagger.yaml")))
 	r.HandleFunc(`/favicon{any:.*}.png`, favIcons)
+
+	r.HandleFunc(`/admin/ws`, as.adminWSHandler(o))
+
+	return r
+}
+
+func (as *apiServer) createMetricsMuxRouter() *mux.Router {
+	r := mux.NewRouter()
+
+	r.Path(config.GetString(coreconfig.MetricsPath)).Handler(promhttp.InstrumentMetricHandler(metrics.Registry(),
+		promhttp.HandlerFor(metrics.Registry(), promhttp.HandlerOpts{})))
 
 	return r
 }

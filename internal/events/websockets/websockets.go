@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -22,11 +22,12 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
-	"github.com/hyperledger/firefly/internal/config"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/config"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/events"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 type WebSockets struct {
@@ -40,17 +41,15 @@ type WebSockets struct {
 
 func (ws *WebSockets) Name() string { return "websockets" }
 
-func (ws *WebSockets) Init(ctx context.Context, prefix config.Prefix, callbacks events.Callbacks) error {
+func (ws *WebSockets) Init(ctx context.Context, config config.Section, callbacks events.Callbacks) error {
 	*ws = WebSockets{
-		ctx:         ctx,
-		connections: make(map[string]*websocketConnection),
-		capabilities: &events.Capabilities{
-			ChangeEvents: true,
-		},
-		callbacks: callbacks,
+		ctx:          ctx,
+		connections:  make(map[string]*websocketConnection),
+		capabilities: &events.Capabilities{},
+		callbacks:    callbacks,
 		upgrader: websocket.Upgrader{
-			ReadBufferSize:  int(prefix.GetByteSize(ReadBufferSize)),
-			WriteBufferSize: int(prefix.GetByteSize(WriteBufferSize)),
+			ReadBufferSize:  int(config.GetByteSize(ReadBufferSize)),
+			WriteBufferSize: int(config.GetByteSize(WriteBufferSize)),
 			CheckOrigin: func(r *http.Request) bool {
 				// Cors is handled by the API server that wraps this handler
 				return true
@@ -68,36 +67,24 @@ func (ws *WebSockets) GetOptionsSchema(ctx context.Context) string {
 	return `{}` // no extra options currently
 }
 
-func (ws *WebSockets) ValidateOptions(options *fftypes.SubscriptionOptions) error {
+func (ws *WebSockets) ValidateOptions(options *core.SubscriptionOptions) error {
 	// We don't support streaming the full data over websockets
 	if options.WithData != nil && *options.WithData {
-		return i18n.NewError(ws.ctx, i18n.MsgWebsocketsNoData)
+		return i18n.NewError(ws.ctx, coremsgs.MsgWebsocketsNoData)
 	}
 	forceFalse := false
 	options.WithData = &forceFalse
 	return nil
 }
 
-func (ws *WebSockets) DeliveryRequest(connID string, sub *fftypes.Subscription, event *fftypes.EventDelivery, data []*fftypes.Data) error {
+func (ws *WebSockets) DeliveryRequest(connID string, sub *core.Subscription, event *core.EventDelivery, data core.DataArray) error {
 	ws.connMux.Lock()
 	conn, ok := ws.connections[connID]
 	ws.connMux.Unlock()
 	if !ok {
-		return i18n.NewError(ws.ctx, i18n.MsgWSConnectionNotActive, connID)
+		return i18n.NewError(ws.ctx, coremsgs.MsgWSConnectionNotActive, connID)
 	}
 	return conn.dispatch(event)
-}
-
-func (ws *WebSockets) ChangeEvent(connID string, ce *fftypes.ChangeEvent) {
-	ws.connMux.Lock()
-	conn, ok := ws.connections[connID]
-	ws.connMux.Unlock()
-	if ok {
-		err := conn.dispatchChangeEvent(ce)
-		if err != nil {
-			log.L(ws.ctx).Errorf("WebSocket delivery of change notification failed: %s", err)
-		}
-	}
 }
 
 func (ws *WebSockets) ServeHTTP(res http.ResponseWriter, req *http.Request) {
@@ -108,26 +95,26 @@ func (ws *WebSockets) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 
 	ws.connMux.Lock()
-	wc := newConnection(ws.ctx, ws, wsConn)
+	wc := newConnection(ws.ctx, ws, wsConn, req)
 	ws.connections[wc.connID] = wc
 	ws.connMux.Unlock()
 
 	wc.processAutoStart(req)
 }
 
-func (ws *WebSockets) ack(connID string, inflight *fftypes.EventDeliveryResponse) {
+func (ws *WebSockets) ack(connID string, inflight *core.EventDeliveryResponse) {
 	ws.callbacks.DeliveryResponse(connID, inflight)
 }
 
-func (ws *WebSockets) start(wc *websocketConnection, start *fftypes.WSClientActionStartPayload) error {
+func (ws *WebSockets) start(wc *websocketConnection, start *core.WSClientActionStartPayload) error {
 	if start.Namespace == "" || (!start.Ephemeral && start.Name == "") {
-		return i18n.NewError(ws.ctx, i18n.MsgWSInvalidStartAction)
+		return i18n.NewError(ws.ctx, coremsgs.MsgWSInvalidStartAction)
 	}
 	if start.Ephemeral {
 		return ws.callbacks.EphemeralSubscription(wc.connID, start.Namespace, &start.Filter, &start.Options)
 	}
 	// We can have multiple subscriptions on a single
-	return ws.callbacks.RegisterConnection(wc.connID, func(sr fftypes.SubscriptionRef) bool {
+	return ws.callbacks.RegisterConnection(wc.connID, func(sr core.SubscriptionRef) bool {
 		return wc.durableSubMatcher(sr)
 	})
 }
@@ -137,7 +124,7 @@ func (ws *WebSockets) connClosed(connID string) {
 	delete(ws.connections, connID)
 	ws.connMux.Unlock()
 	// Drop lock before calling back
-	ws.callbacks.ConnnectionClosed(connID)
+	ws.callbacks.ConnectionClosed(connID)
 }
 
 func (ws *WebSockets) WaitClosed() {
@@ -150,4 +137,39 @@ func (ws *WebSockets) WaitClosed() {
 	for _, ws := range closedConnections {
 		ws.waitClose()
 	}
+}
+
+func (ws *WebSockets) GetStatus() *core.WebSocketStatus {
+	status := &core.WebSocketStatus{
+		Enabled:     true,
+		Connections: make([]*core.WSConnectionStatus, 0),
+	}
+
+	ws.connMux.Lock()
+	connections := make([]*websocketConnection, 0, len(ws.connections))
+	for _, c := range ws.connections {
+		connections = append(connections, c)
+	}
+	ws.connMux.Unlock()
+
+	for _, wc := range connections {
+		wc.mux.Lock()
+		conn := &core.WSConnectionStatus{
+			ID:            wc.connID,
+			RemoteAddress: wc.remoteAddr,
+			UserAgent:     wc.userAgent,
+			Subscriptions: make([]*core.WSSubscriptionStatus, 0),
+		}
+		status.Connections = append(status.Connections, conn)
+		for _, s := range wc.started {
+			sub := &core.WSSubscriptionStatus{
+				Name:      s.name,
+				Namespace: s.namespace,
+				Ephemeral: s.ephemeral,
+			}
+			conn.Subscriptions = append(conn.Subscriptions, sub)
+		}
+		wc.mux.Unlock()
+	}
+	return status
 }

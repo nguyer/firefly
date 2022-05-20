@@ -14,6 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build cgo
 // +build cgo
 
 package sqlite3
@@ -23,7 +24,7 @@ import (
 	"testing"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/hyperledger/firefly/internal/config"
+	"github.com/hyperledger/firefly-common/pkg/config"
 	"github.com/hyperledger/firefly/internal/database/sqlcommon"
 	"github.com/hyperledger/firefly/mocks/databasemocks"
 	"github.com/stretchr/testify/assert"
@@ -32,19 +33,25 @@ import (
 func TestSQLite3GoProvider(t *testing.T) {
 	sqlite := &SQLite3{}
 	dcb := &databasemocks.Callbacks{}
-	prefix := config.NewPluginConfig("unittest")
-	sqlite.InitPrefix(prefix)
-	prefix.Set(sqlcommon.SQLConfDatasourceURL, "!wrong://")
-	err := sqlite.Init(context.Background(), prefix, dcb)
+	config := config.RootSection("unittest")
+	sqlite.InitConfig(config)
+	config.Set(sqlcommon.SQLConfDatasourceURL, "!wrong://")
+	err := sqlite.Init(context.Background(), config, dcb)
 	assert.NoError(t, err)
 	_, err = sqlite.GetMigrationDriver(sqlite.DB())
 	assert.Error(t, err)
 
+	db, err := sqlite.Open("file::memory:")
+	assert.NoError(t, err)
+	conn, err := db.Conn(context.Background())
+	assert.NoError(t, err)
+	conn.Close()
+
 	assert.Equal(t, "sqlite3", sqlite.Name())
-	assert.Equal(t, sq.Dollar, sqlite.PlaceholderFormat())
+	assert.Equal(t, sq.Dollar, sqlite.Features().PlaceholderFormat)
 
 	insert := sq.Insert("test").Columns("col1").Values("val1")
-	insert, query := sqlite.UpdateInsertForSequenceReturn(insert)
+	insert, query := sqlite.ApplyInsertQueryCustomizations(insert, false)
 	sql, _, err := insert.ToSql()
 	assert.NoError(t, err)
 	assert.Equal(t, "INSERT INTO test (col1) VALUES (?)", sql)

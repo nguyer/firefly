@@ -1,4 +1,4 @@
-// Copyright © 2021 Kaleido, Inc.
+// Copyright © 2022 Kaleido, Inc.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -21,10 +21,12 @@ import (
 	"database/sql"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/hyperledger/firefly/internal/i18n"
-	"github.com/hyperledger/firefly/internal/log"
+	"github.com/hyperledger/firefly-common/pkg/fftypes"
+	"github.com/hyperledger/firefly-common/pkg/i18n"
+	"github.com/hyperledger/firefly-common/pkg/log"
+	"github.com/hyperledger/firefly/internal/coremsgs"
+	"github.com/hyperledger/firefly/pkg/core"
 	"github.com/hyperledger/firefly/pkg/database"
-	"github.com/hyperledger/firefly/pkg/fftypes"
 )
 
 var (
@@ -32,7 +34,6 @@ var (
 		"message_id",
 		"namespace",
 		"name",
-		"ledger",
 		"hash",
 		"created",
 	}
@@ -41,19 +42,32 @@ var (
 	}
 )
 
-func (s *SQLCommon) UpsertGroup(ctx context.Context, group *fftypes.Group, allowExisting bool) (err error) {
+const groupsTable = "groups"
+
+func (s *SQLCommon) UpsertGroup(ctx context.Context, group *core.Group, optimization database.UpsertOptimization) (err error) {
 	ctx, tx, autoCommit, err := s.beginOrUseTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
+	// We use an upsert optimization here for performance, but also to account for the situation where two threads
+	// try to perform an insert concurrently and ensure a non-failure outcome.
+	optimized := false
+	if optimization == database.UpsertOptimizationNew {
+		opErr := s.attemptGroupInsert(ctx, tx, group, true /* we want a failure here we can progress past */)
+		optimized = opErr == nil
+	} else if optimization == database.UpsertOptimizationExisting {
+		rowsAffected, opErr := s.attemptGroupUpdate(ctx, tx, group)
+		optimized = opErr == nil && rowsAffected == 1
+	}
+
 	existing := false
-	if allowExisting {
-		// Do a select within the transaction to detemine if the UUID already exists
-		groupRows, _, err := s.queryTx(ctx, tx,
+	if !optimized {
+		// Do a select within the transaction to determine if the UUID already exists
+		groupRows, _, err := s.queryTx(ctx, groupsTable, tx,
 			sq.Select("hash").
-				From("groups").
+				From(groupsTable).
 				Where(sq.Eq{"hash": group.Hash}),
 		)
 		if err != nil {
@@ -61,59 +75,69 @@ func (s *SQLCommon) UpsertGroup(ctx context.Context, group *fftypes.Group, allow
 		}
 		existing = groupRows.Next()
 		groupRows.Close()
+
+		if existing {
+			if _, err = s.attemptGroupUpdate(ctx, tx, group); err != nil {
+				return err
+			}
+		} else {
+			if err = s.attemptGroupInsert(ctx, tx, group, false); err != nil {
+				return err
+			}
+		}
 	}
 
-	if existing {
-
-		// Update the group
-		if err = s.updateTx(ctx, tx,
-			sq.Update("groups").
-				Set("message_id", group.Message).
-				Set("namespace", group.Namespace).
-				Set("name", group.Name).
-				Set("ledger", group.Ledger).
-				Set("hash", group.Hash).
-				Set("created", group.Created).
-				Where(sq.Eq{"hash": group.Hash}),
-			func() {
-				s.callbacks.HashCollectionNSEvent(database.CollectionGroups, fftypes.ChangeEventTypeUpdated, group.Namespace, group.Hash)
-			},
-		); err != nil {
+	// Note the member list is not allowed to change, as it is part of the hash.
+	// So the optimization above relies on the fact these are in a transaction, so the
+	// whole group (with members) will have been inserted
+	if (optimized && optimization == database.UpsertOptimizationNew) || (!optimized && !existing) {
+		if err = s.updateMembers(ctx, tx, group, false); err != nil {
 			return err
 		}
-	} else {
-		_, err := s.insertTx(ctx, tx,
-			sq.Insert("groups").
-				Columns(groupColumns...).
-				Values(
-					group.Message,
-					group.Namespace,
-					group.Name,
-					group.Ledger,
-					group.Hash,
-					group.Created,
-				),
-			func() {
-				s.callbacks.HashCollectionNSEvent(database.CollectionGroups, fftypes.ChangeEventTypeCreated, group.Namespace, group.Hash)
-			},
-		)
-		if err != nil {
-			return err
-		}
-
-	}
-
-	if err = s.updateMembers(ctx, tx, group, existing); err != nil {
-		return err
 	}
 
 	return s.commitTx(ctx, tx, autoCommit)
 }
 
-func (s *SQLCommon) updateMembers(ctx context.Context, tx *txWrapper, group *fftypes.Group, existing bool) error {
+func (s *SQLCommon) attemptGroupUpdate(ctx context.Context, tx *txWrapper, group *core.Group) (int64, error) {
+	// Update the group
+	return s.updateTx(ctx, groupsTable, tx,
+		sq.Update(groupsTable).
+			Set("message_id", group.Message).
+			Set("namespace", group.Namespace).
+			Set("name", group.Name).
+			Set("hash", group.Hash).
+			Set("created", group.Created).
+			Where(sq.Eq{"hash": group.Hash}),
+		func() {
+			s.callbacks.HashCollectionNSEvent(database.CollectionGroups, core.ChangeEventTypeUpdated, group.Namespace, group.Hash)
+		},
+	)
+}
+
+func (s *SQLCommon) attemptGroupInsert(ctx context.Context, tx *txWrapper, group *core.Group, requestConflictEmptyResult bool) error {
+	_, err := s.insertTxExt(ctx, groupsTable, tx,
+		sq.Insert(groupsTable).
+			Columns(groupColumns...).
+			Values(
+				group.Message,
+				group.Namespace,
+				group.Name,
+				group.Hash,
+				group.Created,
+			),
+		func() {
+			s.callbacks.HashCollectionNSEvent(database.CollectionGroups, core.ChangeEventTypeCreated, group.Namespace, group.Hash)
+		},
+		requestConflictEmptyResult,
+	)
+	return err
+}
+
+func (s *SQLCommon) updateMembers(ctx context.Context, tx *txWrapper, group *core.Group, existing bool) error {
 
 	if existing {
-		if err := s.deleteTx(ctx, tx,
+		if err := s.deleteTx(ctx, groupsTable, tx,
 			sq.Delete("members").
 				Where(sq.And{
 					sq.Eq{"group_hash": group.Hash},
@@ -132,7 +156,7 @@ func (s *SQLCommon) updateMembers(ctx context.Context, tx *txWrapper, group *fft
 		if requiredMember.Node == nil {
 			return i18n.NewError(ctx, i18n.MsgEmptyMemberNode, requiredIdx)
 		}
-		if _, err := s.insertTx(ctx, tx,
+		if _, err := s.insertTx(ctx, groupsTable, tx,
 			sq.Insert("members").
 				Columns(
 					"group_hash",
@@ -156,7 +180,7 @@ func (s *SQLCommon) updateMembers(ctx context.Context, tx *txWrapper, group *fft
 
 }
 
-func (s *SQLCommon) loadMembers(ctx context.Context, groups []*fftypes.Group) error {
+func (s *SQLCommon) loadMembers(ctx context.Context, groups []*core.Group) error {
 
 	groupIDs := make([]string, len(groups))
 	for i, m := range groups {
@@ -165,7 +189,7 @@ func (s *SQLCommon) loadMembers(ctx context.Context, groups []*fftypes.Group) er
 		}
 	}
 
-	members, _, err := s.query(ctx,
+	members, _, err := s.query(ctx, groupsTable,
 		sq.Select(
 			"group_hash",
 			"identity",
@@ -183,10 +207,10 @@ func (s *SQLCommon) loadMembers(ctx context.Context, groups []*fftypes.Group) er
 
 	for members.Next() {
 		var groupID fftypes.Bytes32
-		member := &fftypes.Member{}
+		member := &core.Member{}
 		var idx int
 		if err = members.Scan(&groupID, &member.Identity, &member.Node, &idx); err != nil {
-			return i18n.WrapError(ctx, err, i18n.MsgDBReadErr, "members")
+			return i18n.WrapError(ctx, err, coremsgs.MsgDBReadErr, "members")
 		}
 		for _, g := range groups {
 			if g.Hash.Equals(&groupID) {
@@ -197,34 +221,33 @@ func (s *SQLCommon) loadMembers(ctx context.Context, groups []*fftypes.Group) er
 	// Ensure we return an empty array if no entries, and a consistent order for the data
 	for _, g := range groups {
 		if g.Members == nil {
-			g.Members = fftypes.Members{}
+			g.Members = core.Members{}
 		}
 	}
 
 	return nil
 }
 
-func (s *SQLCommon) groupResult(ctx context.Context, row *sql.Rows) (*fftypes.Group, error) {
-	var group fftypes.Group
+func (s *SQLCommon) groupResult(ctx context.Context, row *sql.Rows) (*core.Group, error) {
+	var group core.Group
 	err := row.Scan(
 		&group.Message,
 		&group.Namespace,
 		&group.Name,
-		&group.Ledger,
 		&group.Hash,
 		&group.Created,
 	)
 	if err != nil {
-		return nil, i18n.WrapError(ctx, err, i18n.MsgDBReadErr, "groups")
+		return nil, i18n.WrapError(ctx, err, coremsgs.MsgDBReadErr, groupsTable)
 	}
 	return &group, nil
 }
 
-func (s *SQLCommon) GetGroupByHash(ctx context.Context, hash *fftypes.Bytes32) (group *fftypes.Group, err error) {
+func (s *SQLCommon) GetGroupByHash(ctx context.Context, hash *fftypes.Bytes32) (group *core.Group, err error) {
 
-	rows, _, err := s.query(ctx,
+	rows, _, err := s.query(ctx, groupsTable,
 		sq.Select(groupColumns...).
-			From("groups").
+			From(groupsTable).
 			Where(sq.Eq{"hash": hash}),
 	)
 	if err != nil {
@@ -243,26 +266,26 @@ func (s *SQLCommon) GetGroupByHash(ctx context.Context, hash *fftypes.Bytes32) (
 	}
 
 	rows.Close()
-	if err = s.loadMembers(ctx, []*fftypes.Group{group}); err != nil {
+	if err = s.loadMembers(ctx, []*core.Group{group}); err != nil {
 		return nil, err
 	}
 
 	return group, nil
 }
 
-func (s *SQLCommon) GetGroups(ctx context.Context, filter database.Filter) (group []*fftypes.Group, res *database.FilterResult, err error) {
-	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(groupColumns...).From("groups"), filter, groupFilterFieldMap, []string{"sequence"})
+func (s *SQLCommon) GetGroups(ctx context.Context, filter database.Filter) (group []*core.Group, res *database.FilterResult, err error) {
+	query, fop, fi, err := s.filterSelect(ctx, "", sq.Select(groupColumns...).From(groupsTable), filter, groupFilterFieldMap, []interface{}{"sequence"})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, tx, err := s.query(ctx, query)
+	rows, tx, err := s.query(ctx, groupsTable, query)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
 
-	groups := []*fftypes.Group{}
+	groups := []*core.Group{}
 	for rows.Next() {
 		group, err := s.groupResult(ctx, rows)
 		if err != nil {
@@ -278,7 +301,7 @@ func (s *SQLCommon) GetGroups(ctx context.Context, filter database.Filter) (grou
 		}
 	}
 
-	return groups, s.queryRes(ctx, tx, "groups", fop, fi), err
+	return groups, s.queryRes(ctx, groupsTable, tx, fop, fi), err
 }
 
 func (s *SQLCommon) UpdateGroup(ctx context.Context, hash *fftypes.Bytes32, update database.Update) (err error) {
@@ -293,17 +316,17 @@ func (s *SQLCommon) UpdateGroups(ctx context.Context, filter database.Filter, up
 	}
 	defer s.rollbackTx(ctx, tx, autoCommit)
 
-	query, err := s.buildUpdate(sq.Update("groups"), update, groupFilterFieldMap)
+	query, err := s.buildUpdate(sq.Update(groupsTable), update, groupFilterFieldMap)
 	if err != nil {
 		return err
 	}
 
-	query, err = s.filterUpdate(ctx, "", query, filter, opFilterFieldMap)
+	query, err = s.filterUpdate(ctx, query, filter, opFilterFieldMap)
 	if err != nil {
 		return err
 	}
 
-	err = s.updateTx(ctx, tx, query, nil /* no change event for filter based update */)
+	_, err = s.updateTx(ctx, groupsTable, tx, query, nil /* no change event for filter based update */)
 	if err != nil {
 		return err
 	}
