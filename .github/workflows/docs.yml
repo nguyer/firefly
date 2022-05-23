@@ -93,7 +93,7 @@ jobs:
         if: github.event_name == 'release'
         run: ls ./gh-pages | grep -E '^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$' | xargs -I '{}' mv './gh-pages/{}' ./docs
 
-     - name: Copy existing 'head' directory into working directory
+      - name: Copy existing 'head' directory into working directory
         if: github.event_name == 'release'
         run: mv ./gh-pages/head ./docs
 
