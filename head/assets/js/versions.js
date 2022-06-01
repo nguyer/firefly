@@ -1,7 +1,6 @@
 async function getVersions(lang) {
     response = await fetch('/firefly/assets/js/versions.json');
     versions = await response.json();
-    console.log(versions);
 
     versionDropdown = document.getElementById('versionDropdown');
 

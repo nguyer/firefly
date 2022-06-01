@@ -200,8 +200,7 @@
               <span class="dropdown">
                 <a class="site-button">English
                 </a>
-                <div class="dropdown-content"><a href="/firefly/head/es/reference/types/wsack.html">Español</a>
-                      </div>
+                <div class="dropdown-content"></div>
               </span>
             </li>
             <li class="aux-nav-list-item">
@@ -224,7 +223,7 @@
               
               
               
-                <li class="breadcrumb-nav-list-item"><a href="/firefly/head/reference/">Reference</a></li>
+                <li class="breadcrumb-nav-list-item"><a href="/firefly/head/reference/">pages.reference</a></li>
                 <li class="breadcrumb-nav-list-item"><a href="/firefly/head/reference/types/">Core Resources</a></li>
               
               <li class="breadcrumb-nav-list-item"><span>WSAck</span></li>
@@ -271,7 +270,7 @@
 <p>An <code class="language-plaintext highlighter-rouge">ack</code> must be sent on a WebSocket for each event delivered to an application.</p>
 
 <blockquote>
-  <p>Unless <code class="language-plaintext highlighter-rouge">autoack</code> is set in the [WSStart](./(wsstart.md) payload/URL parameters to cause
+  <p>Unless <code class="language-plaintext highlighter-rouge">autoack</code> is set in the <a href="./wsstart.html">WSStart</a> payload/URL parameters to cause
 automatic acknowledgement.</p>
 </blockquote>
 
@@ -283,7 +282,7 @@ application that has not been acknowledged is the one the <code class="language-
 <p>If multiple subscriptions are started on a WebSocket, then you need to specify the
 subscription <code class="language-plaintext highlighter-rouge">namespace</code>+<code class="language-plaintext highlighter-rouge">name</code> as part of each <code class="language-plaintext highlighter-rouge">ack</code>.</p>
 
-<p>If you send an acknowledgement that cannot be correlated, then a [WSError](./(wserror.md)
+<p>If you send an acknowledgement that cannot be correlated, then a <a href="./wserror.html">WSError</a>
 payload will be sent to the application.</p>
       <h3 id="example">
         
