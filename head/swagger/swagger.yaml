@@ -31,11 +31,6 @@ paths:
         name: name
         schema:
           type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
-        schema:
-          type: string
       - description: Sort field. For multi-field sort use comma separated values (or
           multiple query values) with '-' prefix for descending
         in: query
@@ -677,6 +672,7 @@ paths:
                     description: The type of the operation
                     enum:
                     - blockchain_pin_batch
+                    - blockchain_network_action
                     - blockchain_invoke
                     - sharedstorage_upload_batch
                     - sharedstorage_upload_blob
@@ -748,6 +744,7 @@ paths:
                     description: The type of the operation
                     enum:
                     - blockchain_pin_batch
+                    - blockchain_network_action
                     - blockchain_invoke
                     - sharedstorage_upload_batch
                     - sharedstorage_upload_blob
@@ -818,11 +815,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: location
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -1441,11 +1433,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: node
         schema:
           type: string
@@ -1678,11 +1665,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -2014,11 +1996,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -3325,6 +3302,7 @@ paths:
                     description: The type of the operation
                     enum:
                     - blockchain_pin_batch
+                    - blockchain_network_action
                     - blockchain_invoke
                     - sharedstorage_upload_batch
                     - sharedstorage_upload_blob
@@ -3396,6 +3374,7 @@ paths:
                     description: The type of the operation
                     enum:
                     - blockchain_pin_batch
+                    - blockchain_network_action
                     - blockchain_invoke
                     - sharedstorage_upload_batch
                     - sharedstorage_upload_blob
@@ -3453,11 +3432,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: location
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -4171,11 +4145,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: validator
         schema:
           type: string
@@ -4571,11 +4540,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: pins
         schema:
           type: string
@@ -4720,11 +4684,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: pins
         schema:
           type: string
@@ -4862,7 +4821,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -4885,6 +4845,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -4901,6 +4862,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -4955,11 +4919,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -5320,11 +5279,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: reference
         schema:
           type: string
@@ -5446,7 +5400,6 @@ paths:
                       - transaction_submitted
                       - message_confirmed
                       - message_rejected
-                      - namespace_confirmed
                       - datatype_confirmed
                       - identity_confirmed
                       - identity_updated
@@ -5550,7 +5503,6 @@ paths:
                     - transaction_submitted
                     - message_confirmed
                     - message_rejected
-                    - namespace_confirmed
                     - datatype_confirmed
                     - identity_confirmed
                     - identity_updated
@@ -5609,11 +5561,6 @@ paths:
         name: message
         schema:
           type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
-        schema:
-          type: string
       - description: Sort field. For multi-field sort use comma separated values (or
           multiple query values) with '-' prefix for descending
         in: query
@@ -5665,6 +5612,9 @@ paths:
                         the name and group members
                       format: byte
                       type: string
+                    localNamespace:
+                      description: The local namespace of the group
+                      type: string
                     members:
                       description: The list of members in this privacy group
                       items:
@@ -5690,7 +5640,8 @@ paths:
                         unique groups to exist with the same list of recipients
                       type: string
                     namespace:
-                      description: The namespace of the group
+                      description: The namespace of the group within the multiparty
+                        network
                       type: string
                   type: object
                 type: array
@@ -5733,6 +5684,9 @@ paths:
                       name and group members
                     format: byte
                     type: string
+                  localNamespace:
+                    description: The local namespace of the group
+                    type: string
                   members:
                     description: The list of members in this privacy group
                     items:
@@ -5758,7 +5712,8 @@ paths:
                       unique groups to exist with the same list of recipients
                     type: string
                   namespace:
-                    description: The namespace of the group
+                    description: The namespace of the group within the multiparty
+                      network
                     type: string
                 type: object
           description: Success
@@ -5823,11 +5778,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -6726,11 +6676,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: type
         schema:
           type: string
@@ -6880,11 +6825,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: pins
         schema:
           type: string
@@ -7024,7 +6964,8 @@ paths:
                           description: The on-chain signing key used to sign the transaction
                           type: string
                         namespace:
-                          description: The namespace of the message
+                          description: The namespace of the message within the multiparty
+                            network
                           type: string
                         tag:
                           description: The message tag indicates the purpose of the
@@ -7047,6 +6988,7 @@ paths:
                           - none
                           - unpinned
                           - batch_pin
+                          - network_action
                           - token_pool
                           - token_transfer
                           - contract_invoke
@@ -7063,6 +7005,9 @@ paths:
                           - transfer_private
                           type: string
                       type: object
+                    localNamespace:
+                      description: The local namespace of the message
+                      type: string
                     pins:
                       description: For private messages, a unique pin hash:nonce is
                         assigned for each topic
@@ -7126,10 +7071,51 @@ paths:
                     format: date-time
                     type: string
                   data:
-                    description: The list of data elements attached to the message
+                    description: For input allows you to specify data in-line in the
+                      message, that will be turned into data attachments. For output
+                      when fetchdata is used on API calls, includes the in-line data
+                      payloads of all data attachments
                     items:
-                      description: The list of data elements attached to the message
+                      description: For input allows you to specify data in-line in
+                        the message, that will be turned into data attachments. For
+                        output when fetchdata is used on API calls, includes the in-line
+                        data payloads of all data attachments
                       properties:
+                        blob:
+                          description: An optional in-line hash reference to a previously
+                            uploaded binary data blob
+                          properties:
+                            hash:
+                              description: The hash of the binary blob data
+                              format: byte
+                              type: string
+                            name:
+                              description: The name field from the metadata attached
+                                to the blob, commonly used as a path/filename, and
+                                indexed for search
+                              type: string
+                            public:
+                              description: If this data has been published to shared
+                                storage, this field is the id of the data in the shared
+                                storage plugin (IPFS hash etc.)
+                              type: string
+                            size:
+                              description: The size of the binary data
+                              format: int64
+                              type: integer
+                          type: object
+                        datatype:
+                          description: The optional datatype to use for validation
+                            of the in-line data
+                          properties:
+                            name:
+                              description: The name of the datatype
+                              type: string
+                            version:
+                              description: The version of the datatype. Semantic versioning
+                                is encouraged, such as v1.0.1
+                              type: string
+                          type: object
                         hash:
                           description: The hash of the referenced data
                           format: byte
@@ -7138,6 +7124,13 @@ paths:
                           description: The UUID of the referenced data resource
                           format: uuid
                           type: string
+                        validator:
+                          description: The data validator type to use for in-line
+                            data
+                          type: string
+                        value:
+                          description: The in-line value for the data. Can be any
+                            JSON type - object, array, string, number or boolean
                       type: object
                     type: array
                   group:
@@ -7213,7 +7206,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -7236,6 +7230,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -7252,6 +7247,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -7400,11 +7398,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: reference
         schema:
           type: string
@@ -7526,7 +7519,6 @@ paths:
                       - transaction_submitted
                       - message_confirmed
                       - message_rejected
-                      - namespace_confirmed
                       - datatype_confirmed
                       - identity_confirmed
                       - identity_updated
@@ -7604,6 +7596,7 @@ paths:
                     - none
                     - unpinned
                     - batch_pin
+                    - network_action
                     - token_pool
                     - token_transfer
                     - contract_invoke
@@ -7708,6 +7701,7 @@ paths:
                       - none
                       - unpinned
                       - batch_pin
+                      - network_action
                       - token_pool
                       - token_transfer
                       - contract_invoke
@@ -7789,7 +7783,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -7812,6 +7807,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -7828,6 +7824,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -7911,7 +7910,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -7934,6 +7934,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -7950,6 +7951,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -8105,6 +8109,7 @@ paths:
                       - none
                       - unpinned
                       - batch_pin
+                      - network_action
                       - token_pool
                       - token_transfer
                       - contract_invoke
@@ -8192,7 +8197,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -8215,6 +8221,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -8231,6 +8238,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -8320,7 +8330,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -8343,6 +8354,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -8359,6 +8371,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -8510,6 +8525,7 @@ paths:
                       - none
                       - unpinned
                       - batch_pin
+                      - network_action
                       - token_pool
                       - token_transfer
                       - contract_invoke
@@ -8542,10 +8558,51 @@ paths:
                     format: date-time
                     type: string
                   data:
-                    description: The list of data elements attached to the message
+                    description: For input allows you to specify data in-line in the
+                      message, that will be turned into data attachments. For output
+                      when fetchdata is used on API calls, includes the in-line data
+                      payloads of all data attachments
                     items:
-                      description: The list of data elements attached to the message
+                      description: For input allows you to specify data in-line in
+                        the message, that will be turned into data attachments. For
+                        output when fetchdata is used on API calls, includes the in-line
+                        data payloads of all data attachments
                       properties:
+                        blob:
+                          description: An optional in-line hash reference to a previously
+                            uploaded binary data blob
+                          properties:
+                            hash:
+                              description: The hash of the binary blob data
+                              format: byte
+                              type: string
+                            name:
+                              description: The name field from the metadata attached
+                                to the blob, commonly used as a path/filename, and
+                                indexed for search
+                              type: string
+                            public:
+                              description: If this data has been published to shared
+                                storage, this field is the id of the data in the shared
+                                storage plugin (IPFS hash etc.)
+                              type: string
+                            size:
+                              description: The size of the binary data
+                              format: int64
+                              type: integer
+                          type: object
+                        datatype:
+                          description: The optional datatype to use for validation
+                            of the in-line data
+                          properties:
+                            name:
+                              description: The name of the datatype
+                              type: string
+                            version:
+                              description: The version of the datatype. Semantic versioning
+                                is encouraged, such as v1.0.1
+                              type: string
+                          type: object
                         hash:
                           description: The hash of the referenced data
                           format: byte
@@ -8554,6 +8611,13 @@ paths:
                           description: The UUID of the referenced data resource
                           format: uuid
                           type: string
+                        validator:
+                          description: The data validator type to use for in-line
+                            data
+                          type: string
+                        value:
+                          description: The in-line value for the data. Can be any
+                            JSON type - object, array, string, number or boolean
                       type: object
                     type: array
                   group:
@@ -8629,7 +8693,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -8652,6 +8717,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -8668,6 +8734,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -8718,72 +8787,11 @@ paths:
                     description:
                       description: A description of the namespace
                       type: string
-                    fireflyContract:
-                      description: Info on the FireFly smart contract configured for
-                        this namespace
-                      properties:
-                        active:
-                          description: The currently active FireFly smart contract
-                          properties:
-                            finalEvent:
-                              description: The identifier for the final blockchain
-                                event received from this contract before termination
-                              type: string
-                            index:
-                              description: The index of this contract in the config
-                                file
-                              type: integer
-                            info:
-                              additionalProperties:
-                                description: Blockchain-specific info on the contract,
-                                  such as its location on chain
-                              description: Blockchain-specific info on the contract,
-                                such as its location on chain
-                              type: object
-                          type: object
-                        terminated:
-                          description: Previously-terminated FireFly smart contracts
-                          items:
-                            description: Previously-terminated FireFly smart contracts
-                            properties:
-                              finalEvent:
-                                description: The identifier for the final blockchain
-                                  event received from this contract before termination
-                                type: string
-                              index:
-                                description: The index of this contract in the config
-                                  file
-                                type: integer
-                              info:
-                                additionalProperties:
-                                  description: Blockchain-specific info on the contract,
-                                    such as its location on chain
-                                description: Blockchain-specific info on the contract,
-                                  such as its location on chain
-                                type: object
-                            type: object
-                          type: array
-                      type: object
-                    id:
-                      description: The UUID of the namespace. For locally established
-                        namespaces will be different on each node in the network.
-                        For broadcast namespaces, will be the same on every node
-                      format: uuid
-                      type: string
-                    message:
-                      description: The UUID of broadcast message used to establish
-                        the namespace. Unset for local namespaces
-                      format: uuid
-                      type: string
                     name:
-                      description: The namespace name
+                      description: The local namespace name
                       type: string
-                    type:
-                      description: The type of the namespace
-                      enum:
-                      - local
-                      - broadcast
-                      - system
+                    remoteName:
+                      description: The namespace name within the multiparty network
                       type: string
                   type: object
                 type: array
@@ -8824,72 +8832,11 @@ paths:
                   description:
                     description: A description of the namespace
                     type: string
-                  fireflyContract:
-                    description: Info on the FireFly smart contract configured for
-                      this namespace
-                    properties:
-                      active:
-                        description: The currently active FireFly smart contract
-                        properties:
-                          finalEvent:
-                            description: The identifier for the final blockchain event
-                              received from this contract before termination
-                            type: string
-                          index:
-                            description: The index of this contract in the config
-                              file
-                            type: integer
-                          info:
-                            additionalProperties:
-                              description: Blockchain-specific info on the contract,
-                                such as its location on chain
-                            description: Blockchain-specific info on the contract,
-                              such as its location on chain
-                            type: object
-                        type: object
-                      terminated:
-                        description: Previously-terminated FireFly smart contracts
-                        items:
-                          description: Previously-terminated FireFly smart contracts
-                          properties:
-                            finalEvent:
-                              description: The identifier for the final blockchain
-                                event received from this contract before termination
-                              type: string
-                            index:
-                              description: The index of this contract in the config
-                                file
-                              type: integer
-                            info:
-                              additionalProperties:
-                                description: Blockchain-specific info on the contract,
-                                  such as its location on chain
-                              description: Blockchain-specific info on the contract,
-                                such as its location on chain
-                              type: object
-                          type: object
-                        type: array
-                    type: object
-                  id:
-                    description: The UUID of the namespace. For locally established
-                      namespaces will be different on each node in the network. For
-                      broadcast namespaces, will be the same on every node
-                    format: uuid
-                    type: string
-                  message:
-                    description: The UUID of broadcast message used to establish the
-                      namespace. Unset for local namespaces
-                    format: uuid
-                    type: string
                   name:
-                    description: The namespace name
+                    description: The local namespace name
                     type: string
-                  type:
-                    description: The type of the namespace
-                    enum:
-                    - local
-                    - broadcast
-                    - system
+                  remoteName:
+                    description: The namespace name within the multiparty network
                     type: string
                 type: object
           description: Success
@@ -8929,11 +8876,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: Sort field. For multi-field sort use comma separated values (or
@@ -9672,6 +9614,7 @@ paths:
                     description: The type of the operation
                     enum:
                     - blockchain_pin_batch
+                    - blockchain_network_action
                     - blockchain_invoke
                     - sharedstorage_upload_batch
                     - sharedstorage_upload_blob
@@ -9743,6 +9686,7 @@ paths:
                     description: The type of the operation
                     enum:
                     - blockchain_pin_batch
+                    - blockchain_network_action
                     - blockchain_invoke
                     - sharedstorage_upload_batch
                     - sharedstorage_upload_blob
@@ -9820,11 +9764,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: location
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -10591,11 +10530,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: node
         schema:
           type: string
@@ -10842,11 +10776,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -11199,11 +11128,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -12545,6 +12469,7 @@ paths:
                     description: The type of the operation
                     enum:
                     - blockchain_pin_batch
+                    - blockchain_network_action
                     - blockchain_invoke
                     - sharedstorage_upload_batch
                     - sharedstorage_upload_blob
@@ -12616,6 +12541,7 @@ paths:
                     description: The type of the operation
                     enum:
                     - blockchain_pin_batch
+                    - blockchain_network_action
                     - blockchain_invoke
                     - sharedstorage_upload_batch
                     - sharedstorage_upload_blob
@@ -12680,11 +12606,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: location
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -13433,11 +13354,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: validator
         schema:
           type: string
@@ -13854,11 +13770,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: pins
         schema:
           type: string
@@ -14010,11 +13921,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: pins
         schema:
           type: string
@@ -14152,7 +14058,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -14175,6 +14082,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -14191,6 +14099,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -14252,11 +14163,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -14638,11 +14544,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: reference
         schema:
           type: string
@@ -14764,7 +14665,6 @@ paths:
                       - transaction_submitted
                       - message_confirmed
                       - message_rejected
-                      - namespace_confirmed
                       - datatype_confirmed
                       - identity_confirmed
                       - identity_updated
@@ -14875,7 +14775,6 @@ paths:
                     - transaction_submitted
                     - message_confirmed
                     - message_rejected
-                    - namespace_confirmed
                     - datatype_confirmed
                     - identity_confirmed
                     - identity_updated
@@ -14941,11 +14840,6 @@ paths:
         name: message
         schema:
           type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
-        schema:
-          type: string
       - description: Sort field. For multi-field sort use comma separated values (or
           multiple query values) with '-' prefix for descending
         in: query
@@ -14997,6 +14891,9 @@ paths:
                         the name and group members
                       format: byte
                       type: string
+                    localNamespace:
+                      description: The local namespace of the group
+                      type: string
                     members:
                       description: The list of members in this privacy group
                       items:
@@ -15022,7 +14919,8 @@ paths:
                         unique groups to exist with the same list of recipients
                       type: string
                     namespace:
-                      description: The namespace of the group
+                      description: The namespace of the group within the multiparty
+                        network
                       type: string
                   type: object
                 type: array
@@ -15072,6 +14970,9 @@ paths:
                       name and group members
                     format: byte
                     type: string
+                  localNamespace:
+                    description: The local namespace of the group
+                    type: string
                   members:
                     description: The list of members in this privacy group
                     items:
@@ -15097,7 +14998,8 @@ paths:
                       unique groups to exist with the same list of recipients
                     type: string
                   namespace:
-                    description: The namespace of the group
+                    description: The namespace of the group within the multiparty
+                      network
                     type: string
                 type: object
           description: Success
@@ -15169,11 +15071,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -16114,11 +16011,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: type
         schema:
           type: string
@@ -16275,11 +16167,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: pins
         schema:
           type: string
@@ -16419,7 +16306,8 @@ paths:
                           description: The on-chain signing key used to sign the transaction
                           type: string
                         namespace:
-                          description: The namespace of the message
+                          description: The namespace of the message within the multiparty
+                            network
                           type: string
                         tag:
                           description: The message tag indicates the purpose of the
@@ -16442,6 +16330,7 @@ paths:
                           - none
                           - unpinned
                           - batch_pin
+                          - network_action
                           - token_pool
                           - token_transfer
                           - contract_invoke
@@ -16458,6 +16347,9 @@ paths:
                           - transfer_private
                           type: string
                       type: object
+                    localNamespace:
+                      description: The local namespace of the message
+                      type: string
                     pins:
                       description: For private messages, a unique pin hash:nonce is
                         assigned for each topic
@@ -16528,10 +16420,51 @@ paths:
                     format: date-time
                     type: string
                   data:
-                    description: The list of data elements attached to the message
+                    description: For input allows you to specify data in-line in the
+                      message, that will be turned into data attachments. For output
+                      when fetchdata is used on API calls, includes the in-line data
+                      payloads of all data attachments
                     items:
-                      description: The list of data elements attached to the message
+                      description: For input allows you to specify data in-line in
+                        the message, that will be turned into data attachments. For
+                        output when fetchdata is used on API calls, includes the in-line
+                        data payloads of all data attachments
                       properties:
+                        blob:
+                          description: An optional in-line hash reference to a previously
+                            uploaded binary data blob
+                          properties:
+                            hash:
+                              description: The hash of the binary blob data
+                              format: byte
+                              type: string
+                            name:
+                              description: The name field from the metadata attached
+                                to the blob, commonly used as a path/filename, and
+                                indexed for search
+                              type: string
+                            public:
+                              description: If this data has been published to shared
+                                storage, this field is the id of the data in the shared
+                                storage plugin (IPFS hash etc.)
+                              type: string
+                            size:
+                              description: The size of the binary data
+                              format: int64
+                              type: integer
+                          type: object
+                        datatype:
+                          description: The optional datatype to use for validation
+                            of the in-line data
+                          properties:
+                            name:
+                              description: The name of the datatype
+                              type: string
+                            version:
+                              description: The version of the datatype. Semantic versioning
+                                is encouraged, such as v1.0.1
+                              type: string
+                          type: object
                         hash:
                           description: The hash of the referenced data
                           format: byte
@@ -16540,6 +16473,13 @@ paths:
                           description: The UUID of the referenced data resource
                           format: uuid
                           type: string
+                        validator:
+                          description: The data validator type to use for in-line
+                            data
+                          type: string
+                        value:
+                          description: The in-line value for the data. Can be any
+                            JSON type - object, array, string, number or boolean
                       type: object
                     type: array
                   group:
@@ -16615,7 +16555,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -16638,6 +16579,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -16654,6 +16596,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -16816,11 +16761,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: reference
         schema:
           type: string
@@ -16942,7 +16882,6 @@ paths:
                       - transaction_submitted
                       - message_confirmed
                       - message_rejected
-                      - namespace_confirmed
                       - datatype_confirmed
                       - identity_confirmed
                       - identity_updated
@@ -17027,6 +16966,7 @@ paths:
                     - none
                     - unpinned
                     - batch_pin
+                    - network_action
                     - token_pool
                     - token_transfer
                     - contract_invoke
@@ -17176,6 +17116,7 @@ paths:
                       - none
                       - unpinned
                       - batch_pin
+                      - network_action
                       - token_pool
                       - token_transfer
                       - contract_invoke
@@ -17263,7 +17204,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -17286,6 +17228,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -17302,6 +17245,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -17391,7 +17337,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -17414,6 +17361,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -17430,6 +17378,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -17592,6 +17543,7 @@ paths:
                       - none
                       - unpinned
                       - batch_pin
+                      - network_action
                       - token_pool
                       - token_transfer
                       - contract_invoke
@@ -17679,7 +17631,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -17702,6 +17655,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -17718,6 +17672,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -17807,7 +17764,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -17830,6 +17788,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -17846,6 +17805,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -18004,6 +17966,7 @@ paths:
                       - none
                       - unpinned
                       - batch_pin
+                      - network_action
                       - token_pool
                       - token_transfer
                       - contract_invoke
@@ -18036,10 +17999,51 @@ paths:
                     format: date-time
                     type: string
                   data:
-                    description: The list of data elements attached to the message
+                    description: For input allows you to specify data in-line in the
+                      message, that will be turned into data attachments. For output
+                      when fetchdata is used on API calls, includes the in-line data
+                      payloads of all data attachments
                     items:
-                      description: The list of data elements attached to the message
+                      description: For input allows you to specify data in-line in
+                        the message, that will be turned into data attachments. For
+                        output when fetchdata is used on API calls, includes the in-line
+                        data payloads of all data attachments
                       properties:
+                        blob:
+                          description: An optional in-line hash reference to a previously
+                            uploaded binary data blob
+                          properties:
+                            hash:
+                              description: The hash of the binary blob data
+                              format: byte
+                              type: string
+                            name:
+                              description: The name field from the metadata attached
+                                to the blob, commonly used as a path/filename, and
+                                indexed for search
+                              type: string
+                            public:
+                              description: If this data has been published to shared
+                                storage, this field is the id of the data in the shared
+                                storage plugin (IPFS hash etc.)
+                              type: string
+                            size:
+                              description: The size of the binary data
+                              format: int64
+                              type: integer
+                          type: object
+                        datatype:
+                          description: The optional datatype to use for validation
+                            of the in-line data
+                          properties:
+                            name:
+                              description: The name of the datatype
+                              type: string
+                            version:
+                              description: The version of the datatype. Semantic versioning
+                                is encouraged, such as v1.0.1
+                              type: string
+                          type: object
                         hash:
                           description: The hash of the referenced data
                           format: byte
@@ -18048,6 +18052,13 @@ paths:
                           description: The UUID of the referenced data resource
                           format: uuid
                           type: string
+                        validator:
+                          description: The data validator type to use for in-line
+                            data
+                          type: string
+                        value:
+                          description: The in-line value for the data. Can be any
+                            JSON type - object, array, string, number or boolean
                       type: object
                     type: array
                   group:
@@ -18123,7 +18134,8 @@ paths:
                         description: The on-chain signing key used to sign the transaction
                         type: string
                       namespace:
-                        description: The namespace of the message
+                        description: The namespace of the message within the multiparty
+                          network
                         type: string
                       tag:
                         description: The message tag indicates the purpose of the
@@ -18146,6 +18158,7 @@ paths:
                         - none
                         - unpinned
                         - batch_pin
+                        - network_action
                         - token_pool
                         - token_transfer
                         - contract_invoke
@@ -18162,6 +18175,9 @@ paths:
                         - transfer_private
                         type: string
                     type: object
+                  localNamespace:
+                    description: The local namespace of the message
+                    type: string
                   pins:
                     description: For private messages, a unique pin hash:nonce is
                       assigned for each topic
@@ -18381,11 +18397,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -18735,11 +18746,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -19220,11 +19226,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -19902,11 +19903,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: output
         schema:
           type: string
@@ -20029,6 +20025,7 @@ paths:
                       description: The type of the operation
                       enum:
                       - blockchain_pin_batch
+                      - blockchain_network_action
                       - blockchain_invoke
                       - sharedstorage_upload_batch
                       - sharedstorage_upload_blob
@@ -20131,6 +20128,7 @@ paths:
                     description: The type of the operation
                     enum:
                     - blockchain_pin_batch
+                    - blockchain_network_action
                     - blockchain_invoke
                     - sharedstorage_upload_batch
                     - sharedstorage_upload_blob
@@ -20236,6 +20234,7 @@ paths:
                     description: The type of the operation
                     enum:
                     - blockchain_pin_batch
+                    - blockchain_network_action
                     - blockchain_invoke
                     - sharedstorage_upload_batch
                     - sharedstorage_upload_blob
@@ -20305,11 +20304,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: masked
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -20417,7 +20411,7 @@ paths:
       - Non-Default Namespace
   /namespaces/{ns}/status:
     get:
-      description: Gets the status of this node
+      description: Gets the status of this namespace
       operationId: getStatusNamespace
       parameters:
       - description: The namespace which scopes this request
@@ -20440,9 +20434,109 @@ paths:
             application/json:
               schema:
                 properties:
+                  multiparty:
+                    description: Information about the multi-party system configured
+                      on this namespace
+                    properties:
+                      contract:
+                        description: Information about the multi-party smart contract
+                          configured for this namespace
+                        properties:
+                          active:
+                            description: The currently active FireFly smart contract
+                            properties:
+                              firstEvent:
+                                description: A blockchain specific string, such as
+                                  a block number, to start listening from. The special
+                                  strings 'oldest' and 'newest' are supported by all
+                                  blockchain connectors
+                                type: string
+                              index:
+                                description: The index of this contract in the config
+                                  file
+                                type: integer
+                              info:
+                                description: Additional info about the current status
+                                  of the multi-party contract
+                                properties:
+                                  finalEvent:
+                                    description: The identifier for the final blockchain
+                                      event received from this contract before termination
+                                    type: string
+                                  subscription:
+                                    description: The backend identifier of the subscription
+                                      for the FireFly BatchPin contract
+                                    type: string
+                                  version:
+                                    description: The version of this multiparty contract
+                                    type: integer
+                                type: object
+                              location:
+                                description: A blockchain specific contract identifier.
+                                  For example an Ethereum contract address, or a Fabric
+                                  chaincode name and channel
+                            type: object
+                          terminated:
+                            description: Previously-terminated FireFly smart contracts
+                            items:
+                              description: Previously-terminated FireFly smart contracts
+                              properties:
+                                firstEvent:
+                                  description: A blockchain specific string, such
+                                    as a block number, to start listening from. The
+                                    special strings 'oldest' and 'newest' are supported
+                                    by all blockchain connectors
+                                  type: string
+                                index:
+                                  description: The index of this contract in the config
+                                    file
+                                  type: integer
+                                info:
+                                  description: Additional info about the current status
+                                    of the multi-party contract
+                                  properties:
+                                    finalEvent:
+                                      description: The identifier for the final blockchain
+                                        event received from this contract before termination
+                                      type: string
+                                    subscription:
+                                      description: The backend identifier of the subscription
+                                        for the FireFly BatchPin contract
+                                      type: string
+                                    version:
+                                      description: The version of this multiparty
+                                        contract
+                                      type: integer
+                                  type: object
+                                location:
+                                  description: A blockchain specific contract identifier.
+                                    For example an Ethereum contract address, or a
+                                    Fabric chaincode name and channel
+                              type: object
+                            type: array
+                        type: object
+                      enabled:
+                        description: Whether multi-party mode is enabled for this
+                          namespace
+                        type: boolean
+                    type: object
                   namespace:
                     description: The namespace that this status applies to
-                    type: string
+                    properties:
+                      created:
+                        description: The time the namespace was created
+                        format: date-time
+                        type: string
+                      description:
+                        description: A description of the namespace
+                        type: string
+                      name:
+                        description: The local namespace name
+                        type: string
+                      remoteName:
+                        description: The namespace name within the multiparty network
+                        type: string
+                    type: object
                   node:
                     description: Details of the local node
                     properties:
@@ -20459,8 +20553,8 @@ paths:
                         type: boolean
                     type: object
                   org:
-                    description: Details of the organization identity that operates
-                      this node
+                    description: Details of the root organization identity registered
+                      for this namespace on the local node
                     properties:
                       did:
                         description: The DID of the organization identity, if registered
@@ -20499,12 +20593,12 @@ paths:
                         type: array
                     type: object
                   plugins:
-                    description: Information about plugins configured on this node
+                    description: Information about plugins configured on this namespace
                     properties:
                       blockchain:
-                        description: The blockchain plugins on this node
+                        description: The blockchain plugins on this namespace
                         items:
-                          description: The blockchain plugins on this node
+                          description: The blockchain plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -20515,9 +20609,9 @@ paths:
                           type: object
                         type: array
                       dataExchange:
-                        description: The data exchange plugins on this node
+                        description: The data exchange plugins on this namespace
                         items:
-                          description: The data exchange plugins on this node
+                          description: The data exchange plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -20528,9 +20622,9 @@ paths:
                           type: object
                         type: array
                       database:
-                        description: The database plugins on this node
+                        description: The database plugins on this namespace
                         items:
-                          description: The database plugins on this node
+                          description: The database plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -20541,9 +20635,9 @@ paths:
                           type: object
                         type: array
                       events:
-                        description: The event plugins on this node
+                        description: The event plugins on this namespace
                         items:
-                          description: The event plugins on this node
+                          description: The event plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -20554,9 +20648,9 @@ paths:
                           type: object
                         type: array
                       identity:
-                        description: The identity plugins on this node
+                        description: The identity plugins on this namespace
                         items:
-                          description: The identity plugins on this node
+                          description: The identity plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -20567,9 +20661,9 @@ paths:
                           type: object
                         type: array
                       sharedStorage:
-                        description: The shared storage plugins on this node
+                        description: The shared storage plugins on this namespace
                         items:
-                          description: The shared storage plugins on this node
+                          description: The shared storage plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -20580,9 +20674,9 @@ paths:
                           type: object
                         type: array
                       tokens:
-                        description: The token plugins on this node
+                        description: The token plugins on this namespace
                         items:
-                          description: The token plugins on this node
+                          description: The token plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -20740,11 +20834,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -22162,11 +22251,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: updated
         schema:
           type: string
@@ -22247,11 +22331,6 @@ paths:
         name: Request-Timeout
         schema:
           default: 2m0s
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
-        schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
@@ -22368,11 +22447,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: localid
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -22788,11 +22862,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: pool
         schema:
           type: string
@@ -22932,6 +23001,15 @@ paths:
                     For example, with 18 decimals a fractional balance of 10.234 will
                     be specified as 10,234,000,000,000,000,000
                   type: string
+                config:
+                  additionalProperties:
+                    description: Input only field, with token connector specific configuration
+                      of the transfer. See your chosen token connector documentation
+                      for details
+                  description: Input only field, with token connector specific configuration
+                    of the transfer. See your chosen token connector documentation
+                    for details
+                  type: object
                 from:
                   description: The source account for the transfer. On input defaults
                     to the value of 'key'
@@ -23058,6 +23136,7 @@ paths:
                           - none
                           - unpinned
                           - batch_pin
+                          - network_action
                           - token_pool
                           - token_transfer
                           - contract_invoke
@@ -23085,6 +23164,9 @@ paths:
                 tokenIndex:
                   description: The index of the token within the pool that this transfer
                     applies to
+                  type: string
+                uri:
+                  description: The URI of the token this transfer applies to
                   type: string
               type: object
       responses:
@@ -23357,6 +23439,15 @@ paths:
                     For example, with 18 decimals a fractional balance of 10.234 will
                     be specified as 10,234,000,000,000,000,000
                   type: string
+                config:
+                  additionalProperties:
+                    description: Input only field, with token connector specific configuration
+                      of the transfer. See your chosen token connector documentation
+                      for details
+                  description: Input only field, with token connector specific configuration
+                    of the transfer. See your chosen token connector documentation
+                    for details
+                  type: object
                 from:
                   description: The source account for the transfer. On input defaults
                     to the value of 'key'
@@ -23483,6 +23574,7 @@ paths:
                           - none
                           - unpinned
                           - batch_pin
+                          - network_action
                           - token_pool
                           - token_transfer
                           - contract_invoke
@@ -23510,6 +23602,9 @@ paths:
                 tokenIndex:
                   description: The index of the token within the pool that this transfer
                     applies to
+                  type: string
+                uri:
+                  description: The URI of the token this transfer applies to
                   type: string
               type: object
       responses:
@@ -23761,11 +23856,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -24355,11 +24445,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: pool
         schema:
           type: string
@@ -24570,6 +24655,15 @@ paths:
                     For example, with 18 decimals a fractional balance of 10.234 will
                     be specified as 10,234,000,000,000,000,000
                   type: string
+                config:
+                  additionalProperties:
+                    description: Input only field, with token connector specific configuration
+                      of the transfer. See your chosen token connector documentation
+                      for details
+                  description: Input only field, with token connector specific configuration
+                    of the transfer. See your chosen token connector documentation
+                    for details
+                  type: object
                 from:
                   description: The source account for the transfer. On input defaults
                     to the value of 'key'
@@ -24696,6 +24790,7 @@ paths:
                           - none
                           - unpinned
                           - batch_pin
+                          - network_action
                           - token_pool
                           - token_transfer
                           - contract_invoke
@@ -24723,6 +24818,9 @@ paths:
                 tokenIndex:
                   description: The index of the token within the pool that this transfer
                     applies to
+                  type: string
+                uri:
+                  description: The URI of the token this transfer applies to
                   type: string
               type: object
       responses:
@@ -25084,11 +25182,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: type
         schema:
           type: string
@@ -25165,6 +25258,7 @@ paths:
                       - none
                       - unpinned
                       - batch_pin
+                      - network_action
                       - token_pool
                       - token_transfer
                       - contract_invoke
@@ -25215,11 +25309,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: id
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -25298,6 +25387,7 @@ paths:
                     - none
                     - unpinned
                     - batch_pin
+                    - network_action
                     - token_pool
                     - token_transfer
                     - contract_invoke
@@ -25490,6 +25580,7 @@ paths:
                       description: The type of the operation
                       enum:
                       - blockchain_pin_batch
+                      - blockchain_network_action
                       - blockchain_invoke
                       - sharedstorage_upload_batch
                       - sharedstorage_upload_blob
@@ -25628,11 +25719,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: identity
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -25963,11 +26049,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -26303,11 +26384,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -26767,11 +26843,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -27421,11 +27492,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: output
         schema:
           type: string
@@ -27548,6 +27614,7 @@ paths:
                       description: The type of the operation
                       enum:
                       - blockchain_pin_batch
+                      - blockchain_network_action
                       - blockchain_invoke
                       - sharedstorage_upload_batch
                       - sharedstorage_upload_blob
@@ -27643,6 +27710,7 @@ paths:
                     description: The type of the operation
                     enum:
                     - blockchain_pin_batch
+                    - blockchain_network_action
                     - blockchain_invoke
                     - sharedstorage_upload_batch
                     - sharedstorage_upload_blob
@@ -27741,6 +27809,7 @@ paths:
                     description: The type of the operation
                     enum:
                     - blockchain_pin_batch
+                    - blockchain_network_action
                     - blockchain_invoke
                     - sharedstorage_upload_batch
                     - sharedstorage_upload_blob
@@ -27803,11 +27872,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: masked
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -27915,7 +27979,7 @@ paths:
       - Default Namespace
   /status:
     get:
-      description: Gets the status of this node
+      description: Gets the status of this namespace
       operationId: getStatus
       parameters:
       - description: Server-side request timeout (milliseconds, or set a custom suffix
@@ -27931,9 +27995,109 @@ paths:
             application/json:
               schema:
                 properties:
+                  multiparty:
+                    description: Information about the multi-party system configured
+                      on this namespace
+                    properties:
+                      contract:
+                        description: Information about the multi-party smart contract
+                          configured for this namespace
+                        properties:
+                          active:
+                            description: The currently active FireFly smart contract
+                            properties:
+                              firstEvent:
+                                description: A blockchain specific string, such as
+                                  a block number, to start listening from. The special
+                                  strings 'oldest' and 'newest' are supported by all
+                                  blockchain connectors
+                                type: string
+                              index:
+                                description: The index of this contract in the config
+                                  file
+                                type: integer
+                              info:
+                                description: Additional info about the current status
+                                  of the multi-party contract
+                                properties:
+                                  finalEvent:
+                                    description: The identifier for the final blockchain
+                                      event received from this contract before termination
+                                    type: string
+                                  subscription:
+                                    description: The backend identifier of the subscription
+                                      for the FireFly BatchPin contract
+                                    type: string
+                                  version:
+                                    description: The version of this multiparty contract
+                                    type: integer
+                                type: object
+                              location:
+                                description: A blockchain specific contract identifier.
+                                  For example an Ethereum contract address, or a Fabric
+                                  chaincode name and channel
+                            type: object
+                          terminated:
+                            description: Previously-terminated FireFly smart contracts
+                            items:
+                              description: Previously-terminated FireFly smart contracts
+                              properties:
+                                firstEvent:
+                                  description: A blockchain specific string, such
+                                    as a block number, to start listening from. The
+                                    special strings 'oldest' and 'newest' are supported
+                                    by all blockchain connectors
+                                  type: string
+                                index:
+                                  description: The index of this contract in the config
+                                    file
+                                  type: integer
+                                info:
+                                  description: Additional info about the current status
+                                    of the multi-party contract
+                                  properties:
+                                    finalEvent:
+                                      description: The identifier for the final blockchain
+                                        event received from this contract before termination
+                                      type: string
+                                    subscription:
+                                      description: The backend identifier of the subscription
+                                        for the FireFly BatchPin contract
+                                      type: string
+                                    version:
+                                      description: The version of this multiparty
+                                        contract
+                                      type: integer
+                                  type: object
+                                location:
+                                  description: A blockchain specific contract identifier.
+                                    For example an Ethereum contract address, or a
+                                    Fabric chaincode name and channel
+                              type: object
+                            type: array
+                        type: object
+                      enabled:
+                        description: Whether multi-party mode is enabled for this
+                          namespace
+                        type: boolean
+                    type: object
                   namespace:
                     description: The namespace that this status applies to
-                    type: string
+                    properties:
+                      created:
+                        description: The time the namespace was created
+                        format: date-time
+                        type: string
+                      description:
+                        description: A description of the namespace
+                        type: string
+                      name:
+                        description: The local namespace name
+                        type: string
+                      remoteName:
+                        description: The namespace name within the multiparty network
+                        type: string
+                    type: object
                   node:
                     description: Details of the local node
                     properties:
@@ -27950,8 +28114,8 @@ paths:
                         type: boolean
                     type: object
                   org:
-                    description: Details of the organization identity that operates
-                      this node
+                    description: Details of the root organization identity registered
+                      for this namespace on the local node
                     properties:
                       did:
                         description: The DID of the organization identity, if registered
@@ -27990,12 +28154,12 @@ paths:
                         type: array
                     type: object
                   plugins:
-                    description: Information about plugins configured on this node
+                    description: Information about plugins configured on this namespace
                     properties:
                       blockchain:
-                        description: The blockchain plugins on this node
+                        description: The blockchain plugins on this namespace
                         items:
-                          description: The blockchain plugins on this node
+                          description: The blockchain plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -28006,9 +28170,9 @@ paths:
                           type: object
                         type: array
                       dataExchange:
-                        description: The data exchange plugins on this node
+                        description: The data exchange plugins on this namespace
                         items:
-                          description: The data exchange plugins on this node
+                          description: The data exchange plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -28019,9 +28183,9 @@ paths:
                           type: object
                         type: array
                       database:
-                        description: The database plugins on this node
+                        description: The database plugins on this namespace
                         items:
-                          description: The database plugins on this node
+                          description: The database plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -28032,9 +28196,9 @@ paths:
                           type: object
                         type: array
                       events:
-                        description: The event plugins on this node
+                        description: The event plugins on this namespace
                         items:
-                          description: The event plugins on this node
+                          description: The event plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -28045,9 +28209,9 @@ paths:
                           type: object
                         type: array
                       identity:
-                        description: The identity plugins on this node
+                        description: The identity plugins on this namespace
                         items:
-                          description: The identity plugins on this node
+                          description: The identity plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -28058,9 +28222,9 @@ paths:
                           type: object
                         type: array
                       sharedStorage:
-                        description: The shared storage plugins on this node
+                        description: The shared storage plugins on this namespace
                         items:
-                          description: The shared storage plugins on this node
+                          description: The shared storage plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -28071,9 +28235,9 @@ paths:
                           type: object
                         type: array
                       tokens:
-                        description: The token plugins on this node
+                        description: The token plugins on this namespace
                         items:
-                          description: The token plugins on this node
+                          description: The token plugins on this namespace
                           properties:
                             name:
                               description: The name of the plugin
@@ -28217,11 +28381,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -29604,11 +29763,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: updated
         schema:
           type: string
@@ -29682,11 +29836,6 @@ paths:
         name: Request-Timeout
         schema:
           default: 2m0s
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
-        schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
@@ -29796,11 +29945,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: localid
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -30202,11 +30346,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: pool
         schema:
           type: string
@@ -30339,6 +30478,15 @@ paths:
                     For example, with 18 decimals a fractional balance of 10.234 will
                     be specified as 10,234,000,000,000,000,000
                   type: string
+                config:
+                  additionalProperties:
+                    description: Input only field, with token connector specific configuration
+                      of the transfer. See your chosen token connector documentation
+                      for details
+                  description: Input only field, with token connector specific configuration
+                    of the transfer. See your chosen token connector documentation
+                    for details
+                  type: object
                 from:
                   description: The source account for the transfer. On input defaults
                     to the value of 'key'
@@ -30465,6 +30613,7 @@ paths:
                           - none
                           - unpinned
                           - batch_pin
+                          - network_action
                           - token_pool
                           - token_transfer
                           - contract_invoke
@@ -30488,6 +30637,9 @@ paths:
                 tokenIndex:
                   description: The index of the token within the pool that this transfer
                     applies to
+                  type: string
+                uri:
+                  description: The URI of the token this transfer applies to
                   type: string
               type: object
       responses:
@@ -30746,6 +30898,15 @@ paths:
                     For example, with 18 decimals a fractional balance of 10.234 will
                     be specified as 10,234,000,000,000,000,000
                   type: string
+                config:
+                  additionalProperties:
+                    description: Input only field, with token connector specific configuration
+                      of the transfer. See your chosen token connector documentation
+                      for details
+                  description: Input only field, with token connector specific configuration
+                    of the transfer. See your chosen token connector documentation
+                    for details
+                  type: object
                 key:
                   description: The blockchain signing key for the transfer. On input
                     defaults to the first signing key of the organization that operates
@@ -30868,6 +31029,7 @@ paths:
                           - none
                           - unpinned
                           - batch_pin
+                          - network_action
                           - token_pool
                           - token_transfer
                           - contract_invoke
@@ -30895,6 +31057,9 @@ paths:
                 tokenIndex:
                   description: The index of the token within the pool that this transfer
                     applies to
+                  type: string
+                uri:
+                  description: The URI of the token this transfer applies to
                   type: string
               type: object
       responses:
@@ -31139,11 +31304,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: name
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -31712,11 +31872,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: pool
         schema:
           type: string
@@ -31920,6 +32075,15 @@ paths:
                     For example, with 18 decimals a fractional balance of 10.234 will
                     be specified as 10,234,000,000,000,000,000
                   type: string
+                config:
+                  additionalProperties:
+                    description: Input only field, with token connector specific configuration
+                      of the transfer. See your chosen token connector documentation
+                      for details
+                  description: Input only field, with token connector specific configuration
+                    of the transfer. See your chosen token connector documentation
+                    for details
+                  type: object
                 from:
                   description: The source account for the transfer. On input defaults
                     to the value of 'key'
@@ -32046,6 +32210,7 @@ paths:
                           - none
                           - unpinned
                           - batch_pin
+                          - network_action
                           - token_pool
                           - token_transfer
                           - contract_invoke
@@ -32073,6 +32238,9 @@ paths:
                 tokenIndex:
                   description: The index of the token within the pool that this transfer
                     applies to
+                  type: string
+                uri:
+                  description: The URI of the token this transfer applies to
                   type: string
               type: object
       responses:
@@ -32420,11 +32588,6 @@ paths:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
-        name: namespace
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
         name: type
         schema:
           type: string
@@ -32501,6 +32664,7 @@ paths:
                       - none
                       - unpinned
                       - batch_pin
+                      - network_action
                       - token_pool
                       - token_transfer
                       - contract_invoke
@@ -32544,11 +32708,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: id
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -32627,6 +32786,7 @@ paths:
                     - none
                     - unpinned
                     - batch_pin
+                    - network_action
                     - token_pool
                     - token_transfer
                     - contract_invoke
@@ -32805,6 +32965,7 @@ paths:
                       description: The type of the operation
                       enum:
                       - blockchain_pin_batch
+                      - blockchain_network_action
                       - blockchain_invoke
                       - sharedstorage_upload_batch
                       - sharedstorage_upload_blob
@@ -32929,11 +33090,6 @@ paths:
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
         in: query
         name: identity
-        schema:
-          type: string
-      - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
-        in: query
-        name: namespace
         schema:
           type: string
       - description: 'Data filter field. Prefixes supported: > >= < <= @ ^ ! !@ !^'
@@ -33085,7 +33241,7 @@ paths:
       - Default Namespace
   /websockets:
     get:
-      description: Gets the status of the current WebSocket connections to this node
+      description: Gets a list of the current WebSocket connections to this node
       operationId: getWebSockets
       parameters:
       - description: Server-side request timeout (milliseconds, or set a custom suffix
