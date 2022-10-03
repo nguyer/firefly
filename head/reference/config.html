@@ -6,7 +6,7 @@
   <meta http-equiv="X-UA-Compatible" content="IE=Edge">
 
   
-    <title>pages.reference - Hyperledger FireFly Docs</title>
+    <title>Configuration Reference - Hyperledger FireFly Docs</title>
 
     
   
@@ -27,18 +27,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <!-- Begin Jekyll SEO tag v2.8.0 -->
-<title>pages.reference | Hyperledger FireFly Docs</title>
+<title>Configuration Reference | Hyperledger FireFly Docs</title>
 <meta name="generator" content="Jekyll v3.9.2" />
-<meta property="og:title" content="pages.reference" />
+<meta property="og:title" content="Configuration Reference" />
 <meta property="og:locale" content="en" />
 <meta name="description" content="Hyperledger FireFly is the first open source Supernode: a complete stack for enterprises to build and scale secure Web3 applications. The FireFly API for digital assets, data flows, and blockchain transactions makes it radically faster to build production-ready apps on popular chains and protocols." />
 <meta property="og:description" content="Hyperledger FireFly is the first open source Supernode: a complete stack for enterprises to build and scale secure Web3 applications. The FireFly API for digital assets, data flows, and blockchain transactions makes it radically faster to build production-ready apps on popular chains and protocols." />
 <meta property="og:site_name" content="Hyperledger FireFly Docs" />
 <meta property="og:type" content="website" />
 <meta name="twitter:card" content="summary" />
-<meta property="twitter:title" content="pages.reference" />
+<meta property="twitter:title" content="Configuration Reference" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebPage","description":"Hyperledger FireFly is the first open source Supernode: a complete stack for enterprises to build and scale secure Web3 applications. The FireFly API for digital assets, data flows, and blockchain transactions makes it radically faster to build production-ready apps on popular chains and protocols.","headline":"pages.reference","publisher":{"@type":"Organization","logo":{"@type":"ImageObject","url":"/firefly/head/images/hyperledger-firefly_color.svg"}},"url":"/firefly/head/reference/config.html"}</script>
+{"@context":"https://schema.org","@type":"WebPage","description":"Hyperledger FireFly is the first open source Supernode: a complete stack for enterprises to build and scale secure Web3 applications. The FireFly API for digital assets, data flows, and blockchain transactions makes it radically faster to build production-ready apps on popular chains and protocols.","headline":"Configuration Reference","publisher":{"@type":"Organization","logo":{"@type":"ImageObject","url":"/firefly/head/images/hyperledger-firefly_color.svg"}},"url":"/firefly/head/reference/config.html"}</script>
 <!-- End Jekyll SEO tag -->
 
 
@@ -92,7 +92,29 @@
     </div>
     <nav role="navigation" aria-label="Main" id="site-nav" class="site-nav">
       
-        <ul class="nav-list"><li class="nav-list-item"><a href="/firefly/head/" class="nav-list-link">Home</a></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/overview/" class="nav-list-link">Understanding FireFly</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/head/overview/firefly_supernode.html" class="nav-list-link">Introduction to Supernodes</a></li><li class="nav-list-item "><a href="/firefly/head/overview/multiparty.html" class="nav-list-link">Multi-party Systems</a></li><li class="nav-list-item "><a href="/firefly/head/overview/firefly_node.html" class="nav-list-link">The FireFly node</a></li><li class="nav-list-item "><a href="/firefly/head/overview/blockchain_protocols.html" class="nav-list-link">Blockchain protocols</a></li><li class="nav-list-item "><a href="/firefly/head/overview/public_vs_permissioned.html" class="nav-list-link">Public and Permissioned</a></li><li class="nav-list-item "><a href="/firefly/head/overview/deterministic_compute.html" class="nav-list-link">Deterministic compute</a></li><li class="nav-list-item "><a href="/firefly/head/overview/data_exchange.html" class="nav-list-link">Private data exchange</a></li><li class="nav-list-item "><a href="/firefly/head/overview/broadcast.html" class="nav-list-link">Broadcast / shared data</a></li><li class="nav-list-item "><a href="/firefly/head/overview/multiparty_process_flow.html" class="nav-list-link">Multi-party process flow</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/gettingstarted/" class="nav-list-link">Getting Started</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/head/gettingstarted/firefly_cli.html" class="nav-list-link">① Install the FireFly CLI</a></li><li class="nav-list-item "><a href="/firefly/head/gettingstarted/setup_env.html" class="nav-list-link">② Start your environment</a></li><li class="nav-list-item "><a href="/firefly/head/gettingstarted/sandbox.html" class="nav-list-link">③ Use the Sandbox</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/tutorials/" class="nav-list-link">Tutorials</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/head/tutorials/broadcast_data.html" class="nav-list-link">Broadcast data</a></li><li class="nav-list-item "><a href="/firefly/head/tutorials/private_send.html" class="nav-list-link">Privately send data</a></li><li class="nav-list-item "><a href="/firefly/head/tutorials/define_datatype.html" class="nav-list-link">Define a datatype</a></li><li class="nav-list-item "><a href="/firefly/head/tutorials/events.html" class="nav-list-link">Listen for events</a></li><li class="nav-list-item "><a href="/firefly/head/tutorials/query_messages.html" class="nav-list-link">Explore messages</a></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/tutorials/tokens/" class="nav-list-link">Use tokens</a><ul class="nav-list"><li class="nav-list-item ">
+        <ul class="nav-list"><li class="nav-list-item"><a href="/firefly/head/" class="nav-list-link">Home</a></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/overview/" class="nav-list-link">Understanding FireFly</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/head/overview/supernode_concept.html" class="nav-list-link">Introduction</a></li><li class="nav-list-item "><a href="/firefly/head/overview/usage_patterns.html" class="nav-list-link">Usage Patterns</a></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/overview/key_features.html" class="nav-list-link">Key Features</a><ul class="nav-list"><li class="nav-list-item ">
+                    <a href="/firefly/head/overview/key_components/apps.html" class="nav-list-link">Apps</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/overview/key_components/digital_assets.html" class="nav-list-link">Digital Assets</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/overview/key_components/connectors.html" class="nav-list-link">Connector Framework</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/overview/key_components/orchestration_engine.html" class="nav-list-link">Orchestration Engine</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/overview/key_components/flows.html" class="nav-list-link">Flows</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/overview/key_components/security.html" class="nav-list-link">Security</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/overview/key_components/tools.html" class="nav-list-link">Tools</a>
+                  </li></ul></li><li class="nav-list-item "><a href="/firefly/head/overview/gateway_features.html" class="nav-list-link">Web3 Gateway Features</a></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/overview/multiparty_features.html" class="nav-list-link">Multiparty Features</a><ul class="nav-list"><li class="nav-list-item ">
+                    <a href="/firefly/head/overview/multiparty/multiparty_flow.html" class="nav-list-link">Multiparty Process Flow</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/overview/multiparty/data_exchange.html" class="nav-list-link">Private Data Exchange</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/overview/multiparty/broadcast.html" class="nav-list-link">Broadcast Data</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/overview/multiparty/deterministic.html" class="nav-list-link">Deterministic Compute</a>
+                  </li></ul></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/gettingstarted/" class="nav-list-link">Getting Started</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/head/gettingstarted/firefly_cli.html" class="nav-list-link">① Install the FireFly CLI</a></li><li class="nav-list-item "><a href="/firefly/head/gettingstarted/setup_env.html" class="nav-list-link">② Start your environment</a></li><li class="nav-list-item "><a href="/firefly/head/gettingstarted/sandbox.html" class="nav-list-link">③ Use the Sandbox</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/tutorials/" class="nav-list-link">Tutorials</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/head/tutorials/broadcast_data.html" class="nav-list-link">Broadcast Data</a></li><li class="nav-list-item "><a href="/firefly/head/tutorials/private_send.html" class="nav-list-link">Privately send data</a></li><li class="nav-list-item "><a href="/firefly/head/tutorials/define_datatype.html" class="nav-list-link">Define a datatype</a></li><li class="nav-list-item "><a href="/firefly/head/tutorials/events.html" class="nav-list-link">Listen for events</a></li><li class="nav-list-item "><a href="/firefly/head/tutorials/query_messages.html" class="nav-list-link">Explore messages</a></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/tutorials/tokens/" class="nav-list-link">Use tokens</a><ul class="nav-list"><li class="nav-list-item ">
                     <a href="/firefly/head/tutorials/tokens/erc20.html" class="nav-list-link">ERC-20</a>
                   </li><li class="nav-list-item ">
                     <a href="/firefly/head/tutorials/tokens/erc721.html" class="nav-list-link">ERC-721</a>
@@ -102,11 +124,23 @@
                     <a href="/firefly/head/tutorials/custom_contracts/ethereum.html" class="nav-list-link">Ethereum</a>
                   </li><li class="nav-list-item ">
                     <a href="/firefly/head/tutorials/custom_contracts/fabric.html" class="nav-list-link">Fabric</a>
-                  </li></ul></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/tutorials/chains/" class="nav-list-link">Connecting to other chains</a><ul class="nav-list"><li class="nav-list-item ">
+                  </li></ul></li><li class="nav-list-item "><a href="/firefly/head/tutorials/create_custom_identity.html" class="nav-list-link">Create a Custom Identity</a></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/tutorials/chains/" class="nav-list-link">Connecting to remote blockchains</a><ul class="nav-list"><li class="nav-list-item ">
                     <a href="/firefly/head/tutorials/chains/polygon_testnet.html" class="nav-list-link">Polygon Testnet</a>
                   </li><li class="nav-list-item ">
+                    <a href="/firefly/head/tutorials/chains/binance_smart_chain.html" class="nav-list-link">Binance Smartchain Testnet</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/tutorials/chains/avalanche.html" class="nav-list-link">Avalanche Testnet</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/tutorials/chains/arbitrum.html" class="nav-list-link">Arbitrum Testnet</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/tutorials/chains/optimism.html" class="nav-list-link">Optimism Testnet</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/tutorials/chains/near.html" class="nav-list-link">NEAR Testnet</a>
+                  </li><li class="nav-list-item ">
                     <a href="/firefly/head/tutorials/chains/fabric_remote.html" class="nav-list-link">Remote Fabric Network</a>
-                  </li></ul></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/reference/" class="nav-list-link">Reference</a><ul class="nav-list "><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/reference/types/" class="nav-list-link">Core Resources</a><ul class="nav-list"><li class="nav-list-item ">
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/head/tutorials/chains/moonbeam.html" class="nav-list-link">Moonbeam Testnet</a>
+                  </li></ul></li></ul></li><li class="nav-list-item active"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/reference/" class="nav-list-link">Reference</a><ul class="nav-list "><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/reference/types/" class="nav-list-link">Core Resources</a><ul class="nav-list"><li class="nav-list-item ">
                     <a href="/firefly/head/reference/types/simpletypes.html" class="nav-list-link">Simple Types</a>
                   </li><li class="nav-list-item ">
                     <a href="/firefly/head/reference/types/event.html" class="nav-list-link">Event</a>
@@ -152,7 +186,7 @@
                     <a href="/firefly/head/reference/types/wsack.html" class="nav-list-link">WSAck</a>
                   </li><li class="nav-list-item ">
                     <a href="/firefly/head/reference/types/wserror.html" class="nav-list-link">WSError</a>
-                  </li></ul></li><li class="nav-list-item "><a href="/firefly/head/reference/api_query_syntax.html" class="nav-list-link">API Query Syntax</a></li><li class="nav-list-item "><a href="/firefly/head/reference/api_post_syntax.html" class="nav-list-link">API Post Syntax</a></li><li class="nav-list-item "><a href="/firefly/head/reference/events.html" class="nav-list-link">Event Bus</a></li><li class="nav-list-item "><a href="/firefly/head/reference/firefly_interface_format.html" class="nav-list-link">FireFly Interface Format</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/architecture/" class="nav-list-link">Architecture</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/head/architecture/node_component_architecture.html" class="nav-list-link">Node Component Architecture</a></li><li class="nav-list-item "><a href="/firefly/head/architecture/multiparty_event_sequencing.html" class="nav-list-link">Multiparty Event Sequencing</a></li><li class="nav-list-item "><a href="/firefly/head/architecture/ping_pong_txflow.html" class="nav-list-link">Example Transaction Flow</a></li><li class="nav-list-item "><a href="/firefly/head/architecture/plugin_architecture.html" class="nav-list-link">Plugin Architecture</a></li><li class="nav-list-item "><a href="/firefly/head/architecture/internal_event_sequencing.html" class="nav-list-link">Internal Event Sequencing</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/contributors/" class="nav-list-link">Contributors</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/head/contributors/code_overview.html" class="nav-list-link">FireFly Code Overview</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/code_hierarchy.html" class="nav-list-link">FireFly Code Hierarchy</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/code_repositories.html" class="nav-list-link">Code Repositories</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/dev_environment_setup.html" class="nav-list-link">Setting up a FireFly Core Development Environment</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/advanced_cli_usage.html" class="nav-list-link">Advanced CLI Usage</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/docs_setup.html" class="nav-list-link">Contributing to Documentation</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/version_scheme.html" class="nav-list-link">Versioning Scheme</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/release_guide.html" class="nav-list-link">Release Guide</a></li></ul></li><li class="nav-list-item"><a href="/firefly/head/swagger/swagger.html" class="nav-list-link">API Spec</a></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/faqs/faqs.html" class="nav-list-link">FAQs</a><ul class="nav-list "></ul></li></ul>
+                  </li></ul></li><li class="nav-list-item  active"><a href="/firefly/head/reference/config.html" class="nav-list-link active">Configuration Reference</a></li><li class="nav-list-item "><a href="/firefly/head/reference/api_query_syntax.html" class="nav-list-link">API Query Syntax</a></li><li class="nav-list-item "><a href="/firefly/head/reference/api_post_syntax.html" class="nav-list-link">API Post Syntax</a></li><li class="nav-list-item "><a href="/firefly/head/reference/events.html" class="nav-list-link">Event Bus</a></li><li class="nav-list-item "><a href="/firefly/head/reference/identities.html" class="nav-list-link">Identities</a></li><li class="nav-list-item "><a href="/firefly/head/reference/firefly_interface_format.html" class="nav-list-link">FireFly Interface Format</a></li><li class="nav-list-item "><a href="/firefly/head/reference/namespaces.html" class="nav-list-link">Namespaces</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/architecture/" class="nav-list-link">Architecture</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/head/architecture/node_component_architecture.html" class="nav-list-link">Node Component Architecture</a></li><li class="nav-list-item "><a href="/firefly/head/architecture/blockchain_connector_framework.html" class="nav-list-link">Blockchain Connector Toolkit</a></li><li class="nav-list-item "><a href="/firefly/head/architecture/multiparty_event_sequencing.html" class="nav-list-link">Multiparty Event Sequencing</a></li><li class="nav-list-item "><a href="/firefly/head/architecture/plugin_architecture.html" class="nav-list-link">Plugin Architecture</a></li><li class="nav-list-item "><a href="/firefly/head/architecture/ping_pong_txflow.html" class="nav-list-link">Example Transaction Flow</a></li><li class="nav-list-item "><a href="/firefly/head/architecture/internal_event_sequencing.html" class="nav-list-link">Internal Event Sequencing</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/head/contributors/" class="nav-list-link">Contributors</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/head/contributors/code_overview.html" class="nav-list-link">FireFly Code Overview</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/code_hierarchy.html" class="nav-list-link">FireFly Code Hierarchy</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/code_repositories.html" class="nav-list-link">Code Repositories</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/dev_environment_setup.html" class="nav-list-link">Setting up a FireFly Core Development Environment</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/advanced_cli_usage.html" class="nav-list-link">Advanced CLI Usage</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/docs_setup.html" class="nav-list-link">Contributing to Documentation</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/version_scheme.html" class="nav-list-link">Versioning Scheme</a></li><li class="nav-list-item "><a href="/firefly/head/contributors/release_guide.html" class="nav-list-link">Release Guide</a></li></ul></li><li class="nav-list-item"><a href="/firefly/head/swagger/swagger.html" class="nav-list-link">API Spec</a></li><li class="nav-list-item"><a href="/firefly/head/faqs/" class="nav-list-link">FAQs</a></li><li class="nav-list-item"><a href="/firefly/head/releasenotes/" class="nav-list-link">Release Notes</a></li></ul>
 
       
     </nav>
@@ -177,7 +211,7 @@
           <ul class="aux-nav-list">
             
               <li class="aux-nav-list-item">
-                <a href="//github.com/hyperledger/firefly" class="site-button"
+                <a href="https://github.com/hyperledger/firefly" class="site-button"
                   
                 >
                   GitHub
@@ -227,9 +261,9 @@
               
               
               
-                <li class="breadcrumb-nav-list-item"><a href=""></a></li>
+                <li class="breadcrumb-nav-list-item"><a href="/firefly/head/reference/">Reference</a></li>
               
-              <li class="breadcrumb-nav-list-item"><span>pages.reference</span></li>
+              <li class="breadcrumb-nav-list-item"><span>Configuration Reference</span></li>
             </ol>
           </nav>
         
@@ -250,6 +284,33 @@
 
 1. TOC
 {:toc} --><hr />
+      <h2 id="admin">
+        
+        
+          <a href="#admin" class="anchor-heading" aria-labelledby="admin"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> admin
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>enabled</td>
+      <td>Deprecated - use spi.enabled instead</td>
+      <td><code class="language-plaintext highlighter-rouge">boolean</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
       <h2 id="api">
         
         
@@ -315,42 +376,9 @@
   </thead>
   <tbody>
     <tr>
-      <td>keynormalization</td>
-      <td>Mechanism to normalize keys before using them. Valid options are <code class="language-plaintext highlighter-rouge">blockchain_plugin</code> - use blockchain plugin (default) or <code class="language-plaintext highlighter-rouge">none</code> - do not attempt normalization (deprecated - use namespaces.predefined[].asset.manager.keynormalization)</td>
+      <td>keyNormalization</td>
+      <td>Mechanism to normalize keys before using them. Valid options are <code class="language-plaintext highlighter-rouge">blockchain_plugin</code> - use blockchain plugin (default) or <code class="language-plaintext highlighter-rouge">none</code> - do not attempt normalization (deprecated - use namespaces.predefined[].asset.manager.keyNormalization)</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-  </tbody>
-</table>
-      <h2 id="batchcache">
-        
-        
-          <a href="#batchcache" class="anchor-heading" aria-labelledby="batchcache"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> batch.cache
-        
-        
-      </h2>
-    
-
-<table>
-  <thead>
-    <tr>
-      <th>Key</th>
-      <th>Description</th>
-      <th>Type</th>
-      <th>Default Value</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>size</td>
-      <td>The size of the cache</td>
-      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-    <tr>
-      <td>ttl</td>
-      <td>The time to live (TTL) for the cache</td>
-      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
   </tbody>
@@ -667,39 +695,6 @@
       <td>Username</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-  </tbody>
-</table>
-      <h2 id="blockchainethereumaddressresolvercache">
-        
-        
-          <a href="#blockchainethereumaddressresolvercache" class="anchor-heading" aria-labelledby="blockchainethereumaddressresolvercache"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> blockchain.ethereum.addressResolver.cache
-        
-        
-      </h2>
-    
-
-<table>
-  <thead>
-    <tr>
-      <th>Key</th>
-      <th>Description</th>
-      <th>Type</th>
-      <th>Default Value</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>size</td>
-      <td>The size of the cache</td>
-      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">1000</code></td>
-    </tr>
-    <tr>
-      <td>ttl</td>
-      <td>The time to live (TTL) for the cache</td>
-      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">24h</code></td>
     </tr>
   </tbody>
 </table>
@@ -1489,39 +1484,6 @@
     </tr>
   </tbody>
 </table>
-      <h2 id="blockchaineventcache">
-        
-        
-          <a href="#blockchaineventcache" class="anchor-heading" aria-labelledby="blockchaineventcache"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> blockchainevent.cache
-        
-        
-      </h2>
-    
-
-<table>
-  <thead>
-    <tr>
-      <th>Key</th>
-      <th>Description</th>
-      <th>Type</th>
-      <th>Default Value</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>size</td>
-      <td>The size of the cache</td>
-      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-    <tr>
-      <td>ttl</td>
-      <td>The time to live (TTL) for the cache</td>
-      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-  </tbody>
-</table>
       <h2 id="broadcastbatch">
         
         
@@ -1567,6 +1529,99 @@
     </tr>
   </tbody>
 </table>
+      <h2 id="cache">
+        
+        
+          <a href="#cache" class="anchor-heading" aria-labelledby="cache"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> cache
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>enabled</td>
+      <td>Enables caching, defaults to true</td>
+      <td><code class="language-plaintext highlighter-rouge">boolean</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="cacheaddressresolver">
+        
+        
+          <a href="#cacheaddressresolver" class="anchor-heading" aria-labelledby="cacheaddressresolver"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> cache.addressresolver
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>limit</td>
+      <td>Max number of cached items for address resolver</td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>ttl</td>
+      <td>Time to live of cached items for address resolver</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="cachebatch">
+        
+        
+          <a href="#cachebatch" class="anchor-heading" aria-labelledby="cachebatch"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> cache.batch
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>limit</td>
+      <td>Max number of cached items for batches</td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>ttl</td>
+      <td>Time to live of cache items for batches</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
       <h2 id="cacheblockchain">
         
         
@@ -1587,14 +1642,311 @@
   </thead>
   <tbody>
     <tr>
-      <td>size</td>
-      <td>Size of blockchain cache</td>
-      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td>limit</td>
+      <td>Max number of cached items for blockchain</td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
     <tr>
       <td>ttl</td>
-      <td>Time to live for blockchain cache items</td>
+      <td>Time to live of cached items for blockchain</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="cacheblockchainevent">
+        
+        
+          <a href="#cacheblockchainevent" class="anchor-heading" aria-labelledby="cacheblockchainevent"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> cache.blockchainevent
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>limit</td>
+      <td>Max number of cached blockchain events for transactions</td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>ttl</td>
+      <td>Time to live of cached blockchain events for transactions</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="cacheeventlistenertopic">
+        
+        
+          <a href="#cacheeventlistenertopic" class="anchor-heading" aria-labelledby="cacheeventlistenertopic"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> cache.eventlistenertopic
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>limit</td>
+      <td>Max number of cached items for blockchain listener topics</td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>ttl</td>
+      <td>Time to live of cached items for blockchain listener topics</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="cachegroup">
+        
+        
+          <a href="#cachegroup" class="anchor-heading" aria-labelledby="cachegroup"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> cache.group
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>limit</td>
+      <td>Max number of cached items for groups</td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>ttl</td>
+      <td>Time to live of cached items for groups</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="cacheidentity">
+        
+        
+          <a href="#cacheidentity" class="anchor-heading" aria-labelledby="cacheidentity"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> cache.identity
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>limit</td>
+      <td>Max number of cached identities for identity manager</td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>ttl</td>
+      <td>Time to live of cached identities for identity manager</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="cachemessage">
+        
+        
+          <a href="#cachemessage" class="anchor-heading" aria-labelledby="cachemessage"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> cache.message
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>size</td>
+      <td>Max size of cached messages for data manager</td>
+      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>ttl</td>
+      <td>Time to live of cached messages for data manager</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="cacheoperations">
+        
+        
+          <a href="#cacheoperations" class="anchor-heading" aria-labelledby="cacheoperations"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> cache.operations
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>limit</td>
+      <td>Max number of cached items for operations</td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>ttl</td>
+      <td>Time to live of cached items for operations</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="cachesigningkey">
+        
+        
+          <a href="#cachesigningkey" class="anchor-heading" aria-labelledby="cachesigningkey"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> cache.signingkey
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>limit</td>
+      <td>Max number of cached signing keys for identity manager</td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>ttl</td>
+      <td>Time to live of cached signing keys for identity manager</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="cachetransaction">
+        
+        
+          <a href="#cachetransaction" class="anchor-heading" aria-labelledby="cachetransaction"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> cache.transaction
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>size</td>
+      <td>Max size of cached transactions</td>
+      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>ttl</td>
+      <td>Time to live of cached transactions</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="cachevalidator">
+        
+        
+          <a href="#cachevalidator" class="anchor-heading" aria-labelledby="cachevalidator"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> cache.validator
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>size</td>
+      <td>Max size of cached validators for data manager</td>
+      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>ttl</td>
+      <td>Time to live of cached validators for data manager</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
@@ -2434,39 +2786,6 @@
     </tr>
   </tbody>
 </table>
-      <h2 id="eventlistenertopiccache">
-        
-        
-          <a href="#eventlistenertopiccache" class="anchor-heading" aria-labelledby="eventlistenertopiccache"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> event.listenerTopic.cache
-        
-        
-      </h2>
-    
-
-<table>
-  <thead>
-    <tr>
-      <th>Key</th>
-      <th>Description</th>
-      <th>Type</th>
-      <th>Default Value</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>size</td>
-      <td>The size of the cache</td>
-      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-    <tr>
-      <td>ttl</td>
-      <td>The time to live (TTL) for the cache</td>
-      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-  </tbody>
-</table>
       <h2 id="eventtransports">
         
         
@@ -2500,10 +2819,10 @@
     </tr>
   </tbody>
 </table>
-      <h2 id="groupcache">
+      <h2 id="eventswebhooks">
         
         
-          <a href="#groupcache" class="anchor-heading" aria-labelledby="groupcache"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> group.cache
+          <a href="#eventswebhooks" class="anchor-heading" aria-labelledby="eventswebhooks"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> events.webhooks
         
         
       </h2>
@@ -2520,16 +2839,184 @@
   </thead>
   <tbody>
     <tr>
-      <td>size</td>
-      <td>The size of the cache</td>
-      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
+      <td>connectionTimeout</td>
+      <td>The maximum amount of time that a connection is allowed to remain with no data transmitted</td>
+      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
+      <td><code class="language-plaintext highlighter-rouge">30s</code></td>
+    </tr>
+    <tr>
+      <td>expectContinueTimeout</td>
+      <td>See <a href="https://pkg.go.dev/net/http#Transport">ExpectContinueTimeout in the Go docs</a></td>
+      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
+      <td><code class="language-plaintext highlighter-rouge">1s</code></td>
+    </tr>
+    <tr>
+      <td>headers</td>
+      <td>Adds custom headers to HTTP requests</td>
+      <td><code class="language-plaintext highlighter-rouge">map[string]string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
     <tr>
-      <td>ttl</td>
-      <td>The time to live (TTL) for the cache</td>
+      <td>idleTimeout</td>
+      <td>The max duration to hold a HTTP keepalive connection between calls</td>
       <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
+      <td><code class="language-plaintext highlighter-rouge">475ms</code></td>
+    </tr>
+    <tr>
+      <td>maxIdleConns</td>
+      <td>The max number of idle connections to hold pooled</td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
+      <td><code class="language-plaintext highlighter-rouge">100</code></td>
+    </tr>
+    <tr>
+      <td>requestTimeout</td>
+      <td>The maximum amount of time that a request is allowed to remain open</td>
+      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
+      <td><code class="language-plaintext highlighter-rouge">30s</code></td>
+    </tr>
+    <tr>
+      <td>tlsHandshakeTimeout</td>
+      <td>The maximum amount of time to wait for a successful TLS handshake</td>
+      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
+      <td><code class="language-plaintext highlighter-rouge">10s</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="eventswebhooksauth">
+        
+        
+          <a href="#eventswebhooksauth" class="anchor-heading" aria-labelledby="eventswebhooksauth"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> events.webhooks.auth
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>password</td>
+      <td>Password</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>username</td>
+      <td>Username</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="eventswebhooksproxy">
+        
+        
+          <a href="#eventswebhooksproxy" class="anchor-heading" aria-labelledby="eventswebhooksproxy"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> events.webhooks.proxy
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>url</td>
+      <td>Optional HTTP proxy server to connect through</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="eventswebhooksretry">
+        
+        
+          <a href="#eventswebhooksretry" class="anchor-heading" aria-labelledby="eventswebhooksretry"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> events.webhooks.retry
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>count</td>
+      <td>The maximum number of times to retry</td>
+      <td><code class="language-plaintext highlighter-rouge">int</code></td>
+      <td><code class="language-plaintext highlighter-rouge">5</code></td>
+    </tr>
+    <tr>
+      <td>enabled</td>
+      <td>Enables retries</td>
+      <td><code class="language-plaintext highlighter-rouge">boolean</code></td>
+      <td><code class="language-plaintext highlighter-rouge">false</code></td>
+    </tr>
+    <tr>
+      <td>initWaitTime</td>
+      <td>The initial retry delay</td>
+      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
+      <td><code class="language-plaintext highlighter-rouge">250ms</code></td>
+    </tr>
+    <tr>
+      <td>maxWaitTime</td>
+      <td>The maximum retry delay</td>
+      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
+      <td><code class="language-plaintext highlighter-rouge">30s</code></td>
+    </tr>
+  </tbody>
+</table>
+      <h2 id="eventswebsockets">
+        
+        
+          <a href="#eventswebsockets" class="anchor-heading" aria-labelledby="eventswebsockets"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> events.websockets
+        
+        
+      </h2>
+    
+
+<table>
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th>Default Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>readBufferSize</td>
+      <td>WebSocket read buffer size</td>
+      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
+      <td><code class="language-plaintext highlighter-rouge">16Kb</code></td>
+    </tr>
+    <tr>
+      <td>writeBufferSize</td>
+      <td>WebSocket write buffer size</td>
+      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
+      <td><code class="language-plaintext highlighter-rouge">16Kb</code></td>
     </tr>
   </tbody>
 </table>
@@ -2722,39 +3209,6 @@
     </tr>
   </tbody>
 </table>
-      <h2 id="identitymanagercache">
-        
-        
-          <a href="#identitymanagercache" class="anchor-heading" aria-labelledby="identitymanagercache"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> identity.manager.cache
-        
-        
-      </h2>
-    
-
-<table>
-  <thead>
-    <tr>
-      <th>Key</th>
-      <th>Description</th>
-      <th>Type</th>
-      <th>Default Value</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>limit</td>
-      <td>The identity manager cache limit in count of items</td>
-      <td><code class="language-plaintext highlighter-rouge">int</code></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-    <tr>
-      <td>ttl</td>
-      <td>The time to live (TTL) for the cache</td>
-      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-  </tbody>
-</table>
       <h2 id="log">
         
         
@@ -2916,39 +3370,6 @@
       <td>timestamp</td>
       <td>Configures the JSON key containing the timestamp of the log</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-  </tbody>
-</table>
-      <h2 id="messagecache">
-        
-        
-          <a href="#messagecache" class="anchor-heading" aria-labelledby="messagecache"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> message.cache
-        
-        
-      </h2>
-    
-
-<table>
-  <thead>
-    <tr>
-      <th>Key</th>
-      <th>Description</th>
-      <th>Type</th>
-      <th>Default Value</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>size</td>
-      <td>The size of the cache</td>
-      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-    <tr>
-      <td>ttl</td>
-      <td>The time to live (TTL) for the cache</td>
-      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
   </tbody>
@@ -3219,7 +3640,7 @@
   </thead>
   <tbody>
     <tr>
-      <td>defaultkey</td>
+      <td>defaultKey</td>
       <td>A default signing key for blockchain transactions within this namespace</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
@@ -3239,12 +3660,6 @@
     <tr>
       <td>plugins</td>
       <td>The list of plugins for this namespace</td>
-      <td><code class="language-plaintext highlighter-rouge">string</code></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-    <tr>
-      <td>remotename</td>
-      <td>The namespace name to be sent in plugin calls, if it differs from namespace name</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
@@ -3270,7 +3685,7 @@
   </thead>
   <tbody>
     <tr>
-      <td>keynormalization</td>
+      <td>keyNormalization</td>
       <td>Mechanism to normalize keys before using them. Valid options are <code class="language-plaintext highlighter-rouge">blockchain_plugin</code> - use blockchain plugin (default) or <code class="language-plaintext highlighter-rouge">none</code> - do not attempt normalization</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
@@ -3300,6 +3715,12 @@
       <td>enabled</td>
       <td>Enables multi-party mode for this namespace (defaults to true if an org name or key is configured, either here or at the root level)</td>
       <td><code class="language-plaintext highlighter-rouge">boolean</code></td>
+      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
+    </tr>
+    <tr>
+      <td>networknamespace</td>
+      <td>The shared namespace name to be sent in multiparty messages, if it differs from the local namespace name</td>
+      <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
   </tbody>
@@ -3649,7 +4070,7 @@
     </tr>
     <tr>
       <td>tokens</td>
-      <td>The tokens plugin configurations. This will be used to configure tokens connectors</td>
+      <td>The token plugin configurations</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
@@ -3877,39 +4298,6 @@
       <td>Username</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-  </tbody>
-</table>
-      <h2 id="pluginsblockchainethereumaddressresolvercache">
-        
-        
-          <a href="#pluginsblockchainethereumaddressresolvercache" class="anchor-heading" aria-labelledby="pluginsblockchainethereumaddressresolvercache"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> plugins.blockchain[].ethereum.addressResolver.cache
-        
-        
-      </h2>
-    
-
-<table>
-  <thead>
-    <tr>
-      <th>Key</th>
-      <th>Description</th>
-      <th>Type</th>
-      <th>Default Value</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>size</td>
-      <td>The size of the cache</td>
-      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">1000</code></td>
-    </tr>
-    <tr>
-      <td>ttl</td>
-      <td>The time to live (TTL) for the cache</td>
-      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">24h</code></td>
     </tr>
   </tbody>
 </table>
@@ -5604,20 +5992,20 @@
   </thead>
   <tbody>
     <tr>
-      <td>name</td>
-      <td>The name of the Tokens Connector. This will be used in the FireFly API path to refer to this specific Token Connector</td>
+      <td>broadcastName</td>
+      <td>The name to be used in broadcast messages related to this token plugin, if it differs from the local plugin name</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
     <tr>
-      <td>remotename</td>
-      <td>The remote name of the Tokens Connector. This will be used in messages and events to refer to this specific Token Connector, if it differs from the name</td>
+      <td>name</td>
+      <td>A name to identify this token plugin</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
     <tr>
       <td>type</td>
-      <td>The type of the Tokens Connector plugin to use</td>
+      <td>The type of the token plugin to use</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
@@ -5686,7 +6074,7 @@
     </tr>
     <tr>
       <td>url</td>
-      <td>The URL of the Token Connector</td>
+      <td>The URL of the token connector</td>
       <td>URL <code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
@@ -5746,7 +6134,7 @@
   <tbody>
     <tr>
       <td>url</td>
-      <td>Optional HTTP proxy server to use when connecting to the Token Connector</td>
+      <td>Optional HTTP proxy server to use when connecting to the token connector</td>
       <td>URL <code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
@@ -6664,13 +7052,13 @@
     </tr>
     <tr>
       <td>name</td>
-      <td>The name of the Tokens Connector. This will be used in the FireFly API path to refer to this specific Token Connector</td>
+      <td>A name to identify this token plugin</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
     <tr>
       <td>plugin</td>
-      <td>The name of the Tokens Connector plugin to use</td>
+      <td>The type of the token plugin to use</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
@@ -6688,7 +7076,7 @@
     </tr>
     <tr>
       <td>url</td>
-      <td>The URL of the Token Connector</td>
+      <td>The URL of the token connector</td>
       <td>URL <code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
@@ -6748,7 +7136,7 @@
   <tbody>
     <tr>
       <td>url</td>
-      <td>Optional HTTP proxy server to use when connecting to the Token Connector</td>
+      <td>Optional HTTP proxy server to use when connecting to the token connector</td>
       <td>URL <code class="language-plaintext highlighter-rouge">string</code></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
@@ -6850,39 +7238,6 @@
     </tr>
   </tbody>
 </table>
-      <h2 id="transactioncache">
-        
-        
-          <a href="#transactioncache" class="anchor-heading" aria-labelledby="transactioncache"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> transaction.cache
-        
-        
-      </h2>
-    
-
-<table>
-  <thead>
-    <tr>
-      <th>Key</th>
-      <th>Description</th>
-      <th>Type</th>
-      <th>Default Value</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>size</td>
-      <td>The size of the cache</td>
-      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-    <tr>
-      <td>ttl</td>
-      <td>The time to live (TTL) for the cache</td>
-      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-  </tbody>
-</table>
       <h2 id="ui">
         
         
@@ -6912,39 +7267,6 @@
       <td>path</td>
       <td>The file system path which contains the static HTML, CSS, and JavaScript files for the user interface</td>
       <td><code class="language-plaintext highlighter-rouge">string</code></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-  </tbody>
-</table>
-      <h2 id="validatorcache">
-        
-        
-          <a href="#validatorcache" class="anchor-heading" aria-labelledby="validatorcache"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> validator.cache
-        
-        
-      </h2>
-    
-
-<table>
-  <thead>
-    <tr>
-      <th>Key</th>
-      <th>Description</th>
-      <th>Type</th>
-      <th>Default Value</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>size</td>
-      <td>The size of the cache</td>
-      <td><a href="https://pkg.go.dev/github.com/docker/go-units#BytesSize"><code class="language-plaintext highlighter-rouge">BytesSize</code></a></td>
-      <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
-    </tr>
-    <tr>
-      <td>ttl</td>
-      <td>The time to live (TTL) for the cache</td>
-      <td><a href="https://pkg.go.dev/time#Duration"><code class="language-plaintext highlighter-rouge">time.Duration</code></a></td>
       <td><code class="language-plaintext highlighter-rouge">&lt;nil&gt;</code></td>
     </tr>
   </tbody>
