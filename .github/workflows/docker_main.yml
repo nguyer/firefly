@@ -35,7 +35,7 @@ jobs:
           echo ::set-output name=BUILD_TAG::$BUILD_TAG
 
       - name: Read manifest
-        run: source ./manifest.sh
+        run: source ./read_manifest.sh
 
       - name: Build and push
         uses: docker/build-push-action@v2
