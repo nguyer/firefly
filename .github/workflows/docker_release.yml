@@ -39,12 +39,12 @@ jobs:
       - name: Set beta tag
         if: github.event.action == 'prereleased' && contains(github.ref, 'beta')
         run: |
-            echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},tag ghcr.io/hyperledger/firefly:beta" >> $GITHUB_ENV
+            echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/hyperledger/firefly:beta" >> $GITHUB_ENV
 
       - name: Set rc tag
         if: github.event.action == 'prereleased' && contains(github.ref, 'rc')
         run: |
-            echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},tag ghcr.io/hyperledger/firefly:rc" >> $GITHUB_ENV
+            echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/hyperledger/firefly:rc" >> $GITHUB_ENV
 
       - name: Read manifest.json
         id: manifest
