@@ -52,7 +52,7 @@ jobs:
           file: ./Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/firefly:${{ steps.build_tag_generator.outputs.BUILD_TAG }}, ghcr.io/${{ github.repository_owner }}/firefly:head
+          tags: ghcr.io/${{ github.repository_owner }}/firefly:${{ steps.build_tag_generator.outputs.BUILD_TAG }},ghcr.io/${{ github.repository_owner }}/firefly:head
           labels: commit=$GITHUB_SHA, build_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ"), tag=${{ steps.build_tag_generator.outputs.BUILD_TAG }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/firefly:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/firefly:buildcache,mode=max
