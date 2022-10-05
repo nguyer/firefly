@@ -34,9 +34,6 @@ jobs:
           BUILD_TAG=$RELEASE_TAG-$(date +"%Y%m%d")-$GITHUB_RUN_NUMBER
           echo ::set-output name=BUILD_TAG::$BUILD_TAG
 
-      - name: Read manifest
-        run: source ./read_manifest.sh
-
       - name: Build and push
         uses: docker/build-push-action@v2
         with:
@@ -48,3 +45,11 @@ jobs:
           labels: commit=$GITHUB_SHA, build_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ"), tag=${{ steps.build_tag_generator.outputs.BUILD_TAG }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/firefly:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/firefly:buildcache,mode=max
+          build-arg:
+            - FIREFLY_BUILDER_TAG=$(cat manifest.json | jq -r '.build."firefly-builder".image')
+            - FABRIC_BUILDER_TAG=$(cat manifest.json | jq -r '.build."fabric-builder".image')
+            - FABRIC_BUILDER_PLATFORM=$(cat manifest.json | jq -r '.build."fabric-builder".platform')
+            - SOLIDITY_BUILDER_TAG=$(cat manifest.json | jq -r '.build."solidity-builder".image')
+            - BASE_TAG=$(cat manifest.json | jq -r '.build.base.image')
+            - UI_TAG=$(cat manifest.json | jq -r '.ui.tag')
+            - UI_RELEASE=$(cat manifest.json | jq -r '.ui.release')
