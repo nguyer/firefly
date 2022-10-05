@@ -45,7 +45,7 @@ jobs:
           labels: commit=$GITHUB_SHA, build_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ"), tag=${{ steps.build_tag_generator.outputs.BUILD_TAG }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/firefly:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/firefly:buildcache,mode=max
-          build-arg: |
+          build-args: |
             FIREFLY_BUILDER_TAG=$(cat manifest.json | jq -r '.build."firefly-builder".image')
             FABRIC_BUILDER_TAG=$(cat manifest.json | jq -r '.build."fabric-builder".image')
             FABRIC_BUILDER_PLATFORM=$(cat manifest.json | jq -r '.build."fabric-builder".platform')
