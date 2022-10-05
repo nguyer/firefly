@@ -29,22 +29,22 @@ jobs:
       - name: Set latest tag
         if: github.event.action == 'released'
         run: |
-          echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/hyperledger/firefly:latest" >> $GITHUB_ENV
+          echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/${{ github.repository_owner }}/firefly:latest" >> $GITHUB_ENV
 
       - name: Set alpha tag
         if: github.event.action == 'prereleased' && contains(github.ref, 'alpha')
         run: |
-            echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/hyperledger/firefly:alpha" >> $GITHUB_ENV
+            echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/${{ github.repository_owner }}/firefly:alpha" >> $GITHUB_ENV
 
       - name: Set beta tag
         if: github.event.action == 'prereleased' && contains(github.ref, 'beta')
         run: |
-            echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/hyperledger/firefly:beta" >> $GITHUB_ENV
+            echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/${{ github.repository_owner }}/firefly:beta" >> $GITHUB_ENV
 
       - name: Set rc tag
         if: github.event.action == 'prereleased' && contains(github.ref, 'rc')
         run: |
-            echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/hyperledger/firefly:rc" >> $GITHUB_ENV
+            echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/${{ github.repository_owner }}/firefly:rc" >> $GITHUB_ENV
 
       - name: Read manifest.json
         id: manifest
