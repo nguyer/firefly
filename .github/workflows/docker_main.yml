@@ -33,6 +33,17 @@ jobs:
           RELEASE_TAG=$(curl https://api.github.com/repos/${{ github.repository_owner }}/firefly/releases/latest -s | jq .tag_name -r)
           BUILD_TAG=$RELEASE_TAG-$(date +"%Y%m%d")-$GITHUB_RUN_NUMBER
           echo ::set-output name=BUILD_TAG::$BUILD_TAG
+      
+      - name: Read manifest.json
+        id: manifest
+        run: |
+          echo ::set-output name=FIREFLY_BUILDER_TAG::$(cat manifest.json | jq -r '.build."firefly-builder".image')
+          echo ::set-output name=FABRIC_BUILDER_TAG::$(cat manifest.json | jq -r '.build."fabric-builder".image')
+          echo ::set-output name=FABRIC_BUILDER_PLATFORM:$(cat manifest.json | jq -r '.build."fabric-builder".platform')
+          echo ::set-output name=SOLIDITY_BUILDER_TAG::$(cat manifest.json | jq -r '.build."solidity-builder".image')
+          echo ::set-output name=BASE_TAG::$(cat manifest.json | jq -r '.build.base.image')
+          echo ::set-output name=UI_TAG::$(cat manifest.json | jq -r '.ui.tag')
+          echo ::set-output name=UI_RELEASE::$(cat manifest.json | jq -r '.ui.release')
 
       - name: Build and push
         uses: docker/build-push-action@v2
@@ -46,10 +57,10 @@ jobs:
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/firefly:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/firefly:buildcache,mode=max
           build-arg:
-            - FIREFLY_BUILDER_TAG=$(cat manifest.json | jq -r '.build."firefly-builder".image')
-            - FABRIC_BUILDER_TAG=$(cat manifest.json | jq -r '.build."fabric-builder".image')
-            - FABRIC_BUILDER_PLATFORM=$(cat manifest.json | jq -r '.build."fabric-builder".platform')
-            - SOLIDITY_BUILDER_TAG=$(cat manifest.json | jq -r '.build."solidity-builder".image')
-            - BASE_TAG=$(cat manifest.json | jq -r '.build.base.image')
-            - UI_TAG=$(cat manifest.json | jq -r '.ui.tag')
-            - UI_RELEASE=$(cat manifest.json | jq -r '.ui.release')
+            - FIREFLY_BUILDER_TAG=${{ steps.manifest.outputs.FIREFLY_BUILDER_TAG }}
+            - FABRIC_BUILDER_TAG=${{ steps.manifest.outputs.FABRIC_BUILDER_TAG }}
+            - FABRIC_BUILDER_PLATFORM=${{ steps.manifest.outputs.FABRIC_BUILDER_PLATFORM }}
+            - SOLIDITY_BUILDER_TAG=${{ steps.manifest.outputs.SOLIDITY_BUILDER_TAG }}
+            - BASE_TAG=${{ steps.manifest.outputs.BASE_TAG }}
+            - UI_TAG=${{ steps.manifest.outputs.UI_TAG }}
+            - UI_RELEASE=${{ steps.manifest.outputs.UI_RELEASE }}
