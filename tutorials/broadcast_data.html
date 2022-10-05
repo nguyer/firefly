@@ -6,7 +6,7 @@
   <meta http-equiv="X-UA-Compatible" content="IE=Edge">
 
   
-    <title>Broadcast data - Hyperledger FireFly Docs</title>
+    <title>Broadcast Data - Hyperledger FireFly Docs</title>
 
     
   
@@ -92,23 +92,101 @@
     </div>
     <nav role="navigation" aria-label="Main" id="site-nav" class="site-nav">
       
-        <ul class="nav-list"><li class="nav-list-item"><a href="/firefly/" class="nav-list-link">Home</a></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/overview/" class="nav-list-link">Understanding FireFly</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/overview/firefly_supernode.html" class="nav-list-link">Introduction to Supernodes</a></li><li class="nav-list-item "><a href="/firefly/overview/multiparty.html" class="nav-list-link">Multi-party Systems</a></li><li class="nav-list-item "><a href="/firefly/overview/firefly_node.html" class="nav-list-link">The FireFly node</a></li><li class="nav-list-item "><a href="/firefly/overview/blockchain_protocols.html" class="nav-list-link">Blockchain protocols</a></li><li class="nav-list-item "><a href="/firefly/overview/public_vs_permissioned.html" class="nav-list-link">Public and Permissioned</a></li><li class="nav-list-item "><a href="/firefly/overview/deterministic_compute.html" class="nav-list-link">Deterministic compute</a></li><li class="nav-list-item "><a href="/firefly/overview/data_exchange.html" class="nav-list-link">Private data exchange</a></li><li class="nav-list-item "><a href="/firefly/overview/broadcast.html" class="nav-list-link">Broadcast / shared data</a></li><li class="nav-list-item "><a href="/firefly/overview/multiparty_process_flow.html" class="nav-list-link">Multi-party process flow</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/gettingstarted/" class="nav-list-link">Getting Started</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/gettingstarted/firefly_cli.html" class="nav-list-link">① Install the FireFly CLI</a></li><li class="nav-list-item "><a href="/firefly/gettingstarted/setup_env.html" class="nav-list-link">② Start your environment</a></li><li class="nav-list-item "><a href="/firefly/gettingstarted/sandbox.html" class="nav-list-link">③ Use the Sandbox</a></li></ul></li><li class="nav-list-item active"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/tutorials/" class="nav-list-link">Tutorials</a><ul class="nav-list "><li class="nav-list-item  active"><a href="/firefly/tutorials/broadcast_data.html" class="nav-list-link active">Broadcast data</a></li><li class="nav-list-item "><a href="/firefly/tutorials/private_send.html" class="nav-list-link">Privately send data</a></li><li class="nav-list-item "><a href="/firefly/tutorials/query_messages.html" class="nav-list-link">Explore messages</a></li><li class="nav-list-item "><a href="/firefly/tutorials/events.html" class="nav-list-link">Listen for events</a></li><li class="nav-list-item "><a href="/firefly/tutorials/define_datatype.html" class="nav-list-link">Define a datatype</a></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/tutorials/tokens/" class="nav-list-link">Use tokens</a><ul class="nav-list"><li class="nav-list-item ">
+        <ul class="nav-list"><li class="nav-list-item"><a href="/firefly/" class="nav-list-link">Home</a></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/overview/" class="nav-list-link">Understanding FireFly</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/overview/supernode_concept.html" class="nav-list-link">Introduction</a></li><li class="nav-list-item "><a href="/firefly/overview/usage_patterns.html" class="nav-list-link">Usage Patterns</a></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/overview/key_features.html" class="nav-list-link">Key Features</a><ul class="nav-list"><li class="nav-list-item ">
+                    <a href="/firefly/overview/key_components/apps.html" class="nav-list-link">Apps</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/overview/key_components/digital_assets.html" class="nav-list-link">Digital Assets</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/overview/key_components/connectors.html" class="nav-list-link">Connector Framework</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/overview/key_components/orchestration_engine.html" class="nav-list-link">Orchestration Engine</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/overview/key_components/flows.html" class="nav-list-link">Flows</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/overview/key_components/security.html" class="nav-list-link">Security</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/overview/key_components/tools.html" class="nav-list-link">Tools</a>
+                  </li></ul></li><li class="nav-list-item "><a href="/firefly/overview/gateway_features.html" class="nav-list-link">Web3 Gateway Features</a></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/overview/multiparty_features.html" class="nav-list-link">Multiparty Features</a><ul class="nav-list"><li class="nav-list-item ">
+                    <a href="/firefly/overview/multiparty/multiparty_flow.html" class="nav-list-link">Multiparty Process Flow</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/overview/multiparty/data_exchange.html" class="nav-list-link">Private Data Exchange</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/overview/multiparty/broadcast.html" class="nav-list-link">Broadcast Data</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/overview/multiparty/deterministic.html" class="nav-list-link">Deterministic Compute</a>
+                  </li></ul></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/gettingstarted/" class="nav-list-link">Getting Started</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/gettingstarted/firefly_cli.html" class="nav-list-link">① Install the FireFly CLI</a></li><li class="nav-list-item "><a href="/firefly/gettingstarted/setup_env.html" class="nav-list-link">② Start your environment</a></li><li class="nav-list-item "><a href="/firefly/gettingstarted/sandbox.html" class="nav-list-link">③ Use the Sandbox</a></li></ul></li><li class="nav-list-item active"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/tutorials/" class="nav-list-link">Tutorials</a><ul class="nav-list "><li class="nav-list-item  active"><a href="/firefly/tutorials/broadcast_data.html" class="nav-list-link active">Broadcast Data</a></li><li class="nav-list-item "><a href="/firefly/tutorials/private_send.html" class="nav-list-link">Privately send data</a></li><li class="nav-list-item "><a href="/firefly/tutorials/define_datatype.html" class="nav-list-link">Define a datatype</a></li><li class="nav-list-item "><a href="/firefly/tutorials/events.html" class="nav-list-link">Listen for events</a></li><li class="nav-list-item "><a href="/firefly/tutorials/query_messages.html" class="nav-list-link">Explore messages</a></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/tutorials/tokens/" class="nav-list-link">Use tokens</a><ul class="nav-list"><li class="nav-list-item ">
                     <a href="/firefly/tutorials/tokens/erc20.html" class="nav-list-link">ERC-20</a>
                   </li><li class="nav-list-item ">
                     <a href="/firefly/tutorials/tokens/erc721.html" class="nav-list-link">ERC-721</a>
                   </li><li class="nav-list-item ">
                     <a href="/firefly/tutorials/tokens/erc1155.html" class="nav-list-link">ERC-1155</a>
-                  </li></ul></li><li class="nav-list-item "><a href="/firefly/tutorials/custom_contracts.html" class="nav-list-link">Work with custom smart contracts</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/reference/" class="nav-list-link">Reference</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/reference/api_query_syntax.html" class="nav-list-link">API Query Syntax</a></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/reference/types/" class="nav-list-link">Types</a><ul class="nav-list"><li class="nav-list-item ">
+                  </li></ul></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/tutorials/custom_contracts/" class="nav-list-link">Work with custom smart contracts</a><ul class="nav-list"><li class="nav-list-item ">
+                    <a href="/firefly/tutorials/custom_contracts/ethereum.html" class="nav-list-link">Ethereum</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/tutorials/custom_contracts/fabric.html" class="nav-list-link">Fabric</a>
+                  </li></ul></li><li class="nav-list-item "><a href="/firefly/tutorials/create_custom_identity.html" class="nav-list-link">Create a Custom Identity</a></li><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/tutorials/chains/" class="nav-list-link">Connecting to remote blockchains</a><ul class="nav-list"><li class="nav-list-item ">
+                    <a href="/firefly/tutorials/chains/polygon_testnet.html" class="nav-list-link">Polygon Testnet</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/tutorials/chains/binance_smart_chain.html" class="nav-list-link">Binance Smartchain Testnet</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/tutorials/chains/avalanche.html" class="nav-list-link">Avalanche Testnet</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/tutorials/chains/arbitrum.html" class="nav-list-link">Arbitrum Testnet</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/tutorials/chains/optimism.html" class="nav-list-link">Optimism Testnet</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/tutorials/chains/near.html" class="nav-list-link">NEAR Testnet</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/tutorials/chains/fabric_remote.html" class="nav-list-link">Remote Fabric Network</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/tutorials/chains/moonbeam.html" class="nav-list-link">Moonbeam Testnet</a>
+                  </li></ul></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/reference/" class="nav-list-link">Reference</a><ul class="nav-list "><li class="nav-list-item "><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/reference/types/" class="nav-list-link">Core Resources</a><ul class="nav-list"><li class="nav-list-item ">
                     <a href="/firefly/reference/types/simpletypes.html" class="nav-list-link">Simple Types</a>
                   </li><li class="nav-list-item ">
-                    <a href="/firefly/reference/types/message.html" class="nav-list-link">Message</a>
+                    <a href="/firefly/reference/types/event.html" class="nav-list-link">Event</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/subscription.html" class="nav-list-link">Subscription</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/contractapi.html" class="nav-list-link">ContractAPI</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/blockchainevent.html" class="nav-list-link">BlockchainEvent</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/transaction.html" class="nav-list-link">Transaction</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/operation.html" class="nav-list-link">Operation</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/ffi.html" class="nav-list-link">FFI</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/contractlistener.html" class="nav-list-link">ContractListener</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/tokenpool.html" class="nav-list-link">TokenPool</a>
                   </li><li class="nav-list-item ">
                     <a href="/firefly/reference/types/tokentransfer.html" class="nav-list-link">TokenTransfer</a>
                   </li><li class="nav-list-item ">
-                    <a href="/firefly/reference/types/dataref.html" class="nav-list-link">DataRef</a>
+                    <a href="/firefly/reference/types/tokenapproval.html" class="nav-list-link">TokenApproval</a>
                   </li><li class="nav-list-item ">
-                    <a href="/firefly/reference/types/ffi.html" class="nav-list-link">FFI</a>
-                  </li></ul></li><li class="nav-list-item "><a href="/firefly/reference/api_post_syntax.html" class="nav-list-link">API Post Syntax</a></li><li class="nav-list-item "><a href="/firefly/reference/firefly_interface_format.html" class="nav-list-link">FireFly Interface Format</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/architecture/" class="nav-list-link">Architecture</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/architecture/node_component_architecture.html" class="nav-list-link">Node Component Architecture</a></li><li class="nav-list-item "><a href="/firefly/architecture/multiparty_event_sequencing.html" class="nav-list-link">Multiparty Event Sequencing</a></li><li class="nav-list-item "><a href="/firefly/architecture/ping_pong_txflow.html" class="nav-list-link">Example Transaction Flow</a></li><li class="nav-list-item "><a href="/firefly/architecture/plugin_architecture.html" class="nav-list-link">Plugin Architecture</a></li><li class="nav-list-item "><a href="/firefly/architecture/internal_event_sequencing.html" class="nav-list-link">Internal Event Sequencing</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/contributors/" class="nav-list-link">Contributors</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/contributors/code_overview.html" class="nav-list-link">FireFly Code Overview</a></li><li class="nav-list-item "><a href="/firefly/contributors/code_hierarchy.html" class="nav-list-link">FireFly Code Hierarchy</a></li><li class="nav-list-item "><a href="/firefly/contributors/code_repositories.html" class="nav-list-link">Code Repositories</a></li><li class="nav-list-item "><a href="/firefly/contributors/dev_environment_setup.html" class="nav-list-link">Setting up a FireFly Core Development Environment</a></li><li class="nav-list-item "><a href="/firefly/contributors/advanced_cli_usage.html" class="nav-list-link">Advanced CLI Usage</a></li><li class="nav-list-item "><a href="/firefly/contributors/docs_setup.html" class="nav-list-link">Contributing to Documentation</a></li><li class="nav-list-item "><a href="/firefly/contributors/version_scheme.html" class="nav-list-link">Versioning Scheme</a></li><li class="nav-list-item "><a href="/firefly/contributors/release_guide.html" class="nav-list-link">Release Guide</a></li></ul></li><li class="nav-list-item"><a href="/firefly/swagger/swagger.html" class="nav-list-link">API Spec</a></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/faqs/faqs.html" class="nav-list-link">FAQs</a><ul class="nav-list "></ul></li></ul>
+                    <a href="/firefly/reference/types/identity.html" class="nav-list-link">Identity</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/verifier.html" class="nav-list-link">Verifier</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/message.html" class="nav-list-link">Message</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/data.html" class="nav-list-link">Data</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/datatype.html" class="nav-list-link">Datatype</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/group.html" class="nav-list-link">Group</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/batch.html" class="nav-list-link">Batch</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/namespace.html" class="nav-list-link">Namespace</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/wsstart.html" class="nav-list-link">WSStart</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/wsack.html" class="nav-list-link">WSAck</a>
+                  </li><li class="nav-list-item ">
+                    <a href="/firefly/reference/types/wserror.html" class="nav-list-link">WSError</a>
+                  </li></ul></li><li class="nav-list-item "><a href="/firefly/reference/config.html" class="nav-list-link">Configuration Reference</a></li><li class="nav-list-item "><a href="/firefly/reference/api_query_syntax.html" class="nav-list-link">API Query Syntax</a></li><li class="nav-list-item "><a href="/firefly/reference/api_post_syntax.html" class="nav-list-link">API Post Syntax</a></li><li class="nav-list-item "><a href="/firefly/reference/events.html" class="nav-list-link">Event Bus</a></li><li class="nav-list-item "><a href="/firefly/reference/identities.html" class="nav-list-link">Identities</a></li><li class="nav-list-item "><a href="/firefly/reference/firefly_interface_format.html" class="nav-list-link">FireFly Interface Format</a></li><li class="nav-list-item "><a href="/firefly/reference/namespaces.html" class="nav-list-link">Namespaces</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/architecture/" class="nav-list-link">Architecture</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/architecture/node_component_architecture.html" class="nav-list-link">Node Component Architecture</a></li><li class="nav-list-item "><a href="/firefly/architecture/blockchain_connector_framework.html" class="nav-list-link">Blockchain Connector Toolkit</a></li><li class="nav-list-item "><a href="/firefly/architecture/multiparty_event_sequencing.html" class="nav-list-link">Multiparty Event Sequencing</a></li><li class="nav-list-item "><a href="/firefly/architecture/plugin_architecture.html" class="nav-list-link">Plugin Architecture</a></li><li class="nav-list-item "><a href="/firefly/architecture/ping_pong_txflow.html" class="nav-list-link">Example Transaction Flow</a></li><li class="nav-list-item "><a href="/firefly/architecture/internal_event_sequencing.html" class="nav-list-link">Internal Event Sequencing</a></li></ul></li><li class="nav-list-item"><a href="#" class="nav-list-expander"><svg viewBox="0 0 24 24"><use xlink:href="#svg-arrow-right"></use></svg></a><a href="/firefly/contributors/" class="nav-list-link">Contributors</a><ul class="nav-list "><li class="nav-list-item "><a href="/firefly/contributors/code_overview.html" class="nav-list-link">FireFly Code Overview</a></li><li class="nav-list-item "><a href="/firefly/contributors/code_hierarchy.html" class="nav-list-link">FireFly Code Hierarchy</a></li><li class="nav-list-item "><a href="/firefly/contributors/code_repositories.html" class="nav-list-link">Code Repositories</a></li><li class="nav-list-item "><a href="/firefly/contributors/dev_environment_setup.html" class="nav-list-link">Setting up a FireFly Core Development Environment</a></li><li class="nav-list-item "><a href="/firefly/contributors/advanced_cli_usage.html" class="nav-list-link">Advanced CLI Usage</a></li><li class="nav-list-item "><a href="/firefly/contributors/docs_setup.html" class="nav-list-link">Contributing to Documentation</a></li><li class="nav-list-item "><a href="/firefly/contributors/version_scheme.html" class="nav-list-link">Versioning Scheme</a></li><li class="nav-list-item "><a href="/firefly/contributors/release_guide.html" class="nav-list-link">Release Guide</a></li></ul></li><li class="nav-list-item"><a href="/firefly/swagger/swagger.html" class="nav-list-link">API Spec</a></li><li class="nav-list-item"><a href="/firefly/faqs/" class="nav-list-link">FAQs</a></li><li class="nav-list-item"><a href="/firefly/releasenotes/" class="nav-list-link">Release Notes</a></li></ul>
 
       
     </nav>
@@ -133,7 +211,7 @@
           <ul class="aux-nav-list">
             
               <li class="aux-nav-list-item">
-                <a href="//github.com/hyperledger/firefly" class="site-button"
+                <a href="https://github.com/hyperledger/firefly" class="site-button"
                   
                 >
                   GitHub
@@ -160,14 +238,13 @@
               <span class="dropdown">
                 <a class="site-button">English
                 </a>
-                <div class="dropdown-content"><a href="/firefly/es/tutorials/broadcast_data.html">Español</a>
-                      </div>
+                <div class="dropdown-content"></div>
               </span>
             </li>
             <li class="aux-nav-list-item">
               <span class="dropdown">
                 <a class="site-button">
-                  Version: v1.0.7
+                  Version: v1.1.1-rc.4
                 </a>
                 <div class="dropdown-content" id="versionDropdown">
                 </div>
@@ -186,7 +263,7 @@
               
                 <li class="breadcrumb-nav-list-item"><a href="/firefly/tutorials/">Tutorials</a></li>
               
-              <li class="breadcrumb-nav-list-item"><span>Broadcast data</span></li>
+              <li class="breadcrumb-nav-list-item"><span>Broadcast Data</span></li>
             </ol>
           </nav>
         
@@ -216,12 +293,14 @@
   <li><a href="#example-1-inline-string-data" id="markdown-toc-example-1-inline-string-data">Example 1: Inline string data</a></li>
   <li><a href="#example-message-response" id="markdown-toc-example-message-response">Example message response</a></li>
   <li><a href="#example-2-inline-object-data-to-a-topic-no-datatype-verification" id="markdown-toc-example-2-inline-object-data-to-a-topic-no-datatype-verification">Example 2: Inline object data to a topic (no datatype verification)</a></li>
+  <li><a href="#notes-on-why-setting-a-topic-is-important" id="markdown-toc-notes-on-why-setting-a-topic-is-important">Notes on why setting a topic is important</a></li>
   <li><a href="#example-3-upload-a-blob-with-metadata-and-broadcast" id="markdown-toc-example-3-upload-a-blob-with-metadata-and-broadcast">Example 3: Upload a blob with metadata and broadcast</a>    <ol>
       <li><a href="#multipart-form-post-of-a-file" id="markdown-toc-multipart-form-post-of-a-file">Multipart form post of a file</a></li>
       <li><a href="#example-data-response-from-blob-upload" id="markdown-toc-example-data-response-from-blob-upload">Example data response from Blob upload</a></li>
       <li><a href="#broadcast-the-uploaded-data" id="markdown-toc-broadcast-the-uploaded-data">Broadcast the uploaded data</a></li>
     </ol>
   </li>
+  <li><a href="#broadcasting-messages-using-the-sandbox" id="markdown-toc-broadcasting-messages-using-the-sandbox">Broadcasting Messages using the Sandbox</a></li>
 </ol><hr />
       <h2 id="quick-reference">
         
@@ -271,8 +350,8 @@
     
 
 <ul>
-  <li>Key Concepts: <a href="/firefly/overview/broadcast.html">Broadcast / shared data</a></li>
-  <li>Swagger: <a href="../swagger/swagger.html#/Default%20Namespace/postNewMessageBroadcast" data-proofer-ignore="">POST /api/v1/namespaces/{ns}/messages/broadcast]</a></li>
+  <li>Key Concepts: <a href="../overview/multiparty/broadcast.html">Broadcast / shared data</a></li>
+  <li>Swagger Reference: <a href="../swagger/swagger.html#/Default%20Namespace/postNewMessageBroadcast" data-proofer-ignore="">POST /api/v1/namespaces/{ns}/messages/broadcast</a></li>
 </ul>
       <h2 id="example-1-inline-string-data">
         
@@ -283,7 +362,7 @@
       </h2>
     
 
-<p><code class="language-plaintext highlighter-rouge">POST</code> <code class="language-plaintext highlighter-rouge">/api/v1/namespaces/default/broadcast/message</code></p>
+<p><code class="language-plaintext highlighter-rouge">POST</code> <code class="language-plaintext highlighter-rouge">/api/v1/namespaces/default/messages/broadcast</code></p>
 
 <div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
   </span><span class="nl">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
@@ -301,14 +380,6 @@
         
       </h2>
     
-
-<p>Status: <code class="language-plaintext highlighter-rouge">202 Accepted</code> - the message is on it’s way, but has not yet been confirmed.</p>
-
-<blockquote>
-  <p><em>Issue <a href="https://github.com/hyperledger/firefly/issues/112">#112</a> proposes adding
-an option to wait for the message to be confirmed by the blockchain before returning,
-with <code class="language-plaintext highlighter-rouge">200 OK</code>.</em></p>
-</blockquote>
 
 <div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
   </span><span class="nl">"header"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
@@ -355,7 +426,7 @@ information you are publishing. It is used as an ordering context, so all
 broadcasts on a given topic are assured to be processed in order.</li>
 </ul>
 
-<p><code class="language-plaintext highlighter-rouge">POST</code> <code class="language-plaintext highlighter-rouge">/api/v1/namespaces/default/broadcast/message</code></p>
+<p><code class="language-plaintext highlighter-rouge">POST</code> <code class="language-plaintext highlighter-rouge">/api/v1/namespaces/default/messages/broadcast</code></p>
 
 <div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
   </span><span class="nl">"header"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w">
@@ -372,6 +443,39 @@ broadcasts on a given topic are assured to be processed in order.</li>
   </span><span class="p">]</span><span class="w">
 </span><span class="p">}</span><span class="w">
 </span></code></pre></div></div>
+      <h2 id="notes-on-why-setting-a-topic-is-important">
+        
+        
+          <a href="#notes-on-why-setting-a-topic-is-important" class="anchor-heading" aria-labelledby="notes-on-why-setting-a-topic-is-important"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Notes on why setting a topic is important
+        
+        
+      </h2>
+    
+
+<p>The FireFly aggregator uses the <code class="language-plaintext highlighter-rouge">topic</code> (obfuscated on chain) to determine if a
+message is the next message in an in-flight sequence for any groups the node is
+involved in. If it is, then that message must receive all off-chain private data
+and be confirmed before any subsequent messages can be confirmed on the same sequence.</p>
+
+<p>So if you use the same topic in every message, then a single failed send on one
+topic blocks delivery of all messages between those parties, until the missing
+data arrives.</p>
+
+<p>Instead it is best practice to set the topic on your messages to a value
+that identifies an ordered stream of business processing. Some examples:</p>
+
+<ul>
+  <li>A long-running business process instance identifier assigned at initiation</li>
+  <li>A real-world business transaction identifier used off-chain</li>
+  <li>The agreed identifier of an asset you are attaching a stream of evidence to</li>
+  <li>An NFT identifier that is assigned to an asset (digital twin scenarios)</li>
+  <li>An agreed primary key for a data resource being reconciled between multiple parties</li>
+</ul>
+
+<p>The <code class="language-plaintext highlighter-rouge">topic</code> field is an array, because there are cases (such as merging two identifiers)
+where you need a message to be deterministically ordered across multiple sequences.
+However, this is an advanced use case and you are likely to set a single topic
+on the vast majority of your messages.</p>
       <h2 id="example-3-upload-a-blob-with-metadata-and-broadcast">
         
         
@@ -383,17 +487,13 @@ broadcasts on a given topic are assured to be processed in order.</li>
 
 <p>Here we make two API calls.</p>
 
-<ol>
-  <li>Create the <code class="language-plaintext highlighter-rouge">data</code> object explicitly, using a multi-party form upload</li>
-</ol>
+<p>1) Create the <code class="language-plaintext highlighter-rouge">data</code> object explicitly, using a multi-party form upload</p>
 
 <ul>
   <li>You can also just post JSON to this endpoint</li>
 </ul>
 
-<ol>
-  <li>Broadcast a message referring to that data</li>
-</ol>
+<p>2) Broadcast a message referring to that data</p>
 
 <ul>
   <li>The Blob attachment gets published to shared storage
@@ -473,7 +573,7 @@ the <code class="language-plaintext highlighter-rouge">filename</code>, and <cod
 
 <p>Just include a reference to the <code class="language-plaintext highlighter-rouge">id</code> returned from the upload.</p>
 
-<p><code class="language-plaintext highlighter-rouge">POST</code> <code class="language-plaintext highlighter-rouge">/api/v1/namespaces/default/broadcast/message</code></p>
+<p><code class="language-plaintext highlighter-rouge">POST</code> <code class="language-plaintext highlighter-rouge">/api/v1/namespaces/default/messages/broadcast</code></p>
 
 <div class="language-json highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">{</span><span class="w">
   </span><span class="nl">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w">
@@ -483,6 +583,31 @@ the <code class="language-plaintext highlighter-rouge">filename</code>, and <cod
   </span><span class="p">]</span><span class="w">
 </span><span class="p">}</span><span class="w">
 </span></code></pre></div></div>
+      <h2 id="broadcasting-messages-using-the-sandbox">
+        
+        
+          <a href="#broadcasting-messages-using-the-sandbox" class="anchor-heading" aria-labelledby="broadcasting-messages-using-the-sandbox"><svg viewBox="0 0 16 16" aria-hidden="true"><use xlink:href="#svg-link"></use></svg></a> Broadcasting Messages using the Sandbox
+        
+        
+      </h2>
+    
+<p>All of the functionality discussed above can be done through the <a href="/firefly/gettingstarted/sandbox.html">FireFly Sandbox</a>.</p>
+
+<p>To get started, open up the Web UI and Sanbox UI for at least one of your members. The URLs for these were printed in your terminal when you started your FireFly stack.</p>
+
+<p>In the sandbox, enter your message into the message field as seen in the screenshot below.</p>
+
+<p><img src="/firefly/images/message_broadcast_initial.png" alt="Initial Broadcast Message" /></p>
+
+<p>Notice how the <code class="language-plaintext highlighter-rouge">data</code> field in the center panel updates in real time.</p>
+
+<p>Click the blue <code class="language-plaintext highlighter-rouge">Run</code> button. This should return a <code class="language-plaintext highlighter-rouge">202</code> response immediately in the Server Response section and will populate the right hand panel with transaction information after a few seconds.</p>
+
+<p><img src="/firefly/images/message_broadcast_sample_result.png" alt="Broadcast Result" /></p>
+
+<p>Go back to the FireFly UI (the URL for this would have been shown in the terminal when you started the stack) and you’ll see your successful blockchain transaction</p>
+
+<p><img src="/firefly/images/firefly_first_successful_transaction.png" alt="Successful Broadcast Transaction" /></p>
 
         
 
