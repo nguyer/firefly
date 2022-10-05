@@ -39,7 +39,7 @@ jobs:
         run: |
           echo ::set-output name=FIREFLY_BUILDER_TAG::$(cat manifest.json | jq -r '.build."firefly-builder".image')
           echo ::set-output name=FABRIC_BUILDER_TAG::$(cat manifest.json | jq -r '.build."fabric-builder".image')
-          echo ::set-output name=FABRIC_BUILDER_PLATFORM:$(cat manifest.json | jq -r '.build."fabric-builder".platform')
+          echo ::set-output name=FABRIC_BUILDER_PLATFORM::$(cat manifest.json | jq -r '.build."fabric-builder".platform')
           echo ::set-output name=SOLIDITY_BUILDER_TAG::$(cat manifest.json | jq -r '.build."solidity-builder".image')
           echo ::set-output name=BASE_TAG::$(cat manifest.json | jq -r '.build.base.image')
           echo ::set-output name=UI_TAG::$(cat manifest.json | jq -r '.ui.tag')
