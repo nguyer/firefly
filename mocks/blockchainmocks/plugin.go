@@ -103,27 +103,6 @@ func (_m *Plugin) DeployContract(ctx context.Context, nsOpID string, signingKey 
 	return r0
 }
 
-// FormatSigningKey provides a mock function with given fields: ctx, keyRef
-func (_m *Plugin) FormatSigningKey(ctx context.Context, keyRef string) (string, error) {
-	ret := _m.Called(ctx, keyRef)
-
-	var r0 string
-	if rf, ok := ret.Get(0).(func(context.Context, string) string); ok {
-		r0 = rf(ctx, keyRef)
-	} else {
-		r0 = ret.Get(0).(string)
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, keyRef)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
 // GenerateErrorSignature provides a mock function with given fields: ctx, errorDef
 func (_m *Plugin) GenerateErrorSignature(ctx context.Context, errorDef *fftypes.FFIErrorDefinition) string {
 	ret := _m.Called(ctx, errorDef)
