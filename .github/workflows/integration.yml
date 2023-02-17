@@ -20,6 +20,7 @@ jobs:
             TestFabricGatewayE2ESuite,
             TestFabricMultipartyE2ESuite,
           ]
+        stack-type: [ethereum, fabric]
         blockchain-node: [geth, besu, fabric]
         database-type: [sqlite3, postgres]
         exclude:
@@ -39,6 +40,12 @@ jobs:
             blockchain-node: geth
           - test-suite: TestFabricMultipartyE2ESuite
             blockchain-node: besu
+          - stack-type: ethereum
+            blockchain-node: fabric
+          - stack-type: fabric
+            blockchain-node: geth
+          - stack-type: fabric
+            blockchain-node: besu
       fail-fast: false
     steps:
       - uses: actions/checkout@v2
@@ -48,7 +55,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.18
+          go-version: 1.19
 
       - name: Update manifest to latest commit for every service
         run: ./manifestgen.sh head
@@ -85,7 +92,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.18
+          go-version: 1.19
 
       - name: Update manifest to latest commit for every service
         run: ./manifestgen.sh head

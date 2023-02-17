@@ -6,8 +6,8 @@
   },
   "evmconnect": {
     "image": "ghcr.io/hyperledger/firefly-evmconnect",
-    "tag": "v1.2.1",
-    "sha": "5f5ada5da90e7e49ba60f82737f7613d6759134248faa363210b74d89996d9b8"
+    "tag": "v1.2.2",
+    "sha": "9032e45ea9cee7d881ce88eaea720f450d2ed176e96137feb495c5e7850fab45"
   },
   "fabconnect": {
     "image": "ghcr.io/hyperledger/firefly-fabconnect",
@@ -36,10 +36,10 @@
   },
   "build": {
     "firefly-builder": {
-      "image": "golang:1.18-alpine3.16"
+      "image": "golang:1.19-alpine3.16"
     },
     "fabric-builder": {
-      "image": "golang:1.18-alpine3.16",
+      "image": "golang:1.19-alpine3.16",
       "platform": "linux/x86_64"
     },
     "solidity-builder": {
@@ -50,10 +50,10 @@
     }
   },
   "ui": {
-    "tag": "v1.2.0-alpha.1",
-    "release": "v1.2.0-alpha.1"
+    "tag": "v1.2.0",
+    "release": "v1.2.0"
   },
   "cli": {
-    "tag": "v1.2.0-rc.1"
+    "tag": "v1.2.0"
   }
 }
